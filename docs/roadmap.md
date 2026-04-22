@@ -20,38 +20,57 @@
 - [x] LICENSE（MIT）作成
 - [x] .github/workflows/ci.yml 作成
 
-## 残タスク
+## 完了済み（追加）
 
 ### Phase 1: SVGパース基盤（#2）
 
-- [ ] SVG読み込みモジュール（roxmltree or xml-rs選定）
-- [ ] SVG要素の走査（path, rect, circle, line, text 等）
-- [ ] 基本フィルター: stroke の手書き風変換（直線→ベジェ曲線）
-- [ ] `--seed` 対応（rand クレート導入）
+- [x] SVG読み込みモジュール（roxmltree 選定・導入）
+- [x] SVG要素の走査（rect, line, polyline, path, circle, ellipse, polygon, text, group）
+- [x] Primitive enum による内部表現定義
+- [x] グループ `<g>` の階層構造保持
 
-### Phase 2: テーマシステム（#3）
+### Phase 2: 揺らし変換（#3）
+
+- [x] JitterConfig 構造体（amplitude, frequency, stroke_width_var）
+- [x] rect → 揺れた path 変換
+- [x] line / polyline → 揺れた path 変換
+- [x] path → 制御点にノイズを重畳（絶対・相対コマンド両対応）
+- [x] ノイズ生成関数（rand クレート）
+- [x] 線の太さ揺れ
+
+## 残タスク
+
+### Phase 3: テーマシステム（#6〜#8）
 
 - [ ] Theme trait / enum 設計
 - [ ] blueprint テーマ（デフォルト）実装
+- [ ] marker テーマ実装
+- [ ] chalk テーマ実装
 - [ ] カラーパレット定義
 - [ ] fill / stroke のテーマ適用
 
-### Phase 3: 入出力拡張（#4）
+### Phase 4: テキスト・フォント（#4, #12）
 
+- [ ] text のフォント差し替え + ジッター
+- [ ] フォント選定と同梱（OFLライセンス確認）
+
+### Phase 5: ランダム制御・入出力拡張（#5, #9〜#11）
+
+- [ ] `--seed` によるランダム制御
 - [ ] Mermaid 入力対応（mmdc 外部コマンド呼び出し）
+- [ ] md 一括変換モード
 - [ ] PNG 出力（resvg 導入）
 - [ ] WebP 出力
 
-### Phase 4: 追加テーマ（#5）
+### Phase 6: 追加テーマ・図形（#13, #14）
 
-- [ ] sumi テーマ
-- [ ] chalk テーマ
-- [ ] marker テーマ
-- [ ] watercolor テーマ
+- [ ] sumi / watercolor テーマ（にじみエンジン）
+- [ ] circle / ellipse / polygon の揺らし変換
 - [ ] manga テーマ
 
-### Phase 5: 公開準備
+### Phase 7: 公開準備（#15）
 
 - [ ] crates.io 公開
-- [ ] Homebrew _formula 検討
+- [ ] Homebrew formula 検討
+- [ ] 宣伝記事作成
 - [ ] README にインストール方法・使用例を追加
