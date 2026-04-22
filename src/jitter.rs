@@ -17,6 +17,7 @@ impl Default for JitterConfig {
     }
 }
 
+// TODO: #5 seed 対応で再現性を持たせる
 fn noise(amplitude: f64) -> f64 {
     (random::<f64>() - 0.5) * 2.0 * amplitude
 }
