@@ -1,0 +1,25 @@
+[package]
+name = "blueprinter"
+version = "0.1.0"
+edition = "2021"
+authors = ["kako-jun"]
+license = "MIT"
+description = "Hand-drawn style diagram renderer CLI — turn Mermaid, draw.io, and any SVG into sketchy SVG/PNG/WebP"
+homepage = "https://github.com/kako-jun/blueprinter"
+repository = "https://github.com/kako-jun/blueprinter"
+documentation = "https://docs.rs/blueprinter"
+readme = "README.md"
+keywords = ["svg", "mermaid", "diagram", "cli", "sketchy"]
+categories = ["command-line-utilities", "graphics", "rendering"]
+exclude = [".github/", "target/"]
+rust-version = "1.78.0"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
