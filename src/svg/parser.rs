@@ -88,11 +88,7 @@ fn parse_element(node: &Node<'_, '_>) -> Result<Primitive, ParseError> {
         "text" => Ok(Primitive::Text {
             x: attr_f64(node, "x").unwrap_or(0.0),
             y: attr_f64(node, "y").unwrap_or(0.0),
-            content: node
-                .children()
-                .filter_map(|n| n.text())
-                .collect::<Vec<_>>()
-                .concat(),
+            content: node.children().filter_map(|n| n.text()).collect::<String>(),
             font_family: attr_string(node, "font-family"),
             font_size: attr_f64(node, "font-size"),
             fill: attr_string(node, "fill"),
