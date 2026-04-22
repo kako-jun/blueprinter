@@ -234,63 +234,202 @@ fn tokenize_d(d: &str) -> Vec<String> {
 }
 
 fn is_command(token: &str) -> bool {
-    token.len() == 1 && token.chars().next().unwrap().is_alphabetic()
+    if token.len() != 1 {
+        return false;
+    }
+    let c = token.chars().next().unwrap();
+    matches!(
+        c,
+        'M' | 'm'
+            | 'L'
+            | 'l'
+            | 'C'
+            | 'c'
+            | 'Q'
+            | 'q'
+            | 'Z'
+            | 'z'
+            | 'H'
+            | 'h'
+            | 'V'
+            | 'v'
+            | 'S'
+            | 's'
+            | 'T'
+            | 't'
+            | 'A'
+            | 'a'
+    )
+}
+
+/// 相対コマンドに対して現在の絶対座標を加算し、絶対座標値を返す
+fn to_absolute(value: f64, current: f64, is_relative: bool) -> f64 {
+    if is_relative {
+        current + value
+    } else {
+        value
+    }
 }
 
 fn jitter_path_d(d: &str, config: &JitterConfig) -> String {
     let tokens = tokenize_d(d);
     let mut result = String::new();
     let mut i = 0;
+    let mut current_x = 0.0;
+    let mut current_y = 0.0;
+    let mut start_x = 0.0;
+    let mut start_y = 0.0;
+
     while i < tokens.len() {
         if is_command(&tokens[i]) {
             let cmd = tokens[i].chars().next().unwrap();
+            let is_relative = cmd.is_ascii_lowercase();
             result.push(cmd);
             i += 1;
             match cmd.to_ascii_uppercase() {
-                'M' | 'L' | 'T' => {
+                'M' => {
+                    let x = to_absolute(
+                        tokens[i].parse::<f64>().unwrap_or(0.0),
+                        current_x,
+                        is_relative,
+                    ) + noise(config.amplitude);
+                    let y = to_absolute(
+                        tokens[i + 1].parse::<f64>().unwrap_or(0.0),
+                        current_y,
+                        is_relative,
+                    ) + noise(config.amplitude);
+                    result.push_str(&format!(" {:.3} {:.3}", x, y));
+                    current_x = x;
+                    current_y = y;
+                    start_x = x;
+                    start_y = y;
+                    i += 2;
+                    // 後続の座標ペアは暗黙のlinetoとして処理
                     while i + 2 <= tokens.len() && !is_command(&tokens[i]) {
-                        let x = tokens[i].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
-                        let y =
-                            tokens[i + 1].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
+                        let x = to_absolute(
+                            tokens[i].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y = to_absolute(
+                            tokens[i + 1].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
                         result.push_str(&format!(" {:.3} {:.3}", x, y));
+                        current_x = x;
+                        current_y = y;
+                        i += 2;
+                    }
+                }
+                'L' | 'T' => {
+                    while i + 2 <= tokens.len() && !is_command(&tokens[i]) {
+                        let x = to_absolute(
+                            tokens[i].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y = to_absolute(
+                            tokens[i + 1].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        result.push_str(&format!(" {:.3} {:.3}", x, y));
+                        current_x = x;
+                        current_y = y;
                         i += 2;
                     }
                 }
                 'C' => {
                     while i + 6 <= tokens.len() && !is_command(&tokens[i]) {
-                        for _ in 0..3 {
-                            let x =
-                                tokens[i].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
-                            let y = tokens[i + 1].parse::<f64>().unwrap_or(0.0)
-                                + noise(config.amplitude);
-                            result.push_str(&format!(" {:.3} {:.3}", x, y));
-                            i += 2;
-                        }
+                        let x1 = to_absolute(
+                            tokens[i].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y1 = to_absolute(
+                            tokens[i + 1].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let x2 = to_absolute(
+                            tokens[i + 2].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y2 = to_absolute(
+                            tokens[i + 3].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let x = to_absolute(
+                            tokens[i + 4].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y = to_absolute(
+                            tokens[i + 5].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        result.push_str(&format!(
+                            " {:.3} {:.3} {:.3} {:.3} {:.3} {:.3}",
+                            x1, y1, x2, y2, x, y
+                        ));
+                        current_x = x;
+                        current_y = y;
+                        i += 6;
                     }
                 }
                 'Q' | 'S' => {
                     while i + 4 <= tokens.len() && !is_command(&tokens[i]) {
-                        for _ in 0..2 {
-                            let x =
-                                tokens[i].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
-                            let y = tokens[i + 1].parse::<f64>().unwrap_or(0.0)
-                                + noise(config.amplitude);
-                            result.push_str(&format!(" {:.3} {:.3}", x, y));
-                            i += 2;
-                        }
+                        let x1 = to_absolute(
+                            tokens[i].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y1 = to_absolute(
+                            tokens[i + 1].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let x = to_absolute(
+                            tokens[i + 2].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y = to_absolute(
+                            tokens[i + 3].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        result.push_str(&format!(" {:.3} {:.3} {:.3} {:.3}", x1, y1, x, y));
+                        current_x = x;
+                        current_y = y;
+                        i += 4;
                     }
                 }
                 'H' => {
                     while i < tokens.len() && !is_command(&tokens[i]) {
-                        let x = tokens[i].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
+                        let x = to_absolute(
+                            tokens[i].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
                         result.push_str(&format!(" {:.3}", x));
+                        current_x = x;
                         i += 1;
                     }
                 }
                 'V' => {
                     while i < tokens.len() && !is_command(&tokens[i]) {
-                        let y = tokens[i].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
+                        let y = to_absolute(
+                            tokens[i].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
                         result.push_str(&format!(" {:.3}", y));
+                        current_y = y;
                         i += 1;
                     }
                 }
@@ -301,18 +440,29 @@ fn jitter_path_d(d: &str, config: &JitterConfig) -> String {
                         let rot = tokens[i + 2].parse::<f64>().unwrap_or(0.0);
                         let large_arc = tokens[i + 3].parse::<f64>().unwrap_or(0.0);
                         let sweep = tokens[i + 4].parse::<f64>().unwrap_or(0.0);
-                        let x =
-                            tokens[i + 5].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
-                        let y =
-                            tokens[i + 6].parse::<f64>().unwrap_or(0.0) + noise(config.amplitude);
+                        let x = to_absolute(
+                            tokens[i + 5].parse::<f64>().unwrap_or(0.0),
+                            current_x,
+                            is_relative,
+                        ) + noise(config.amplitude);
+                        let y = to_absolute(
+                            tokens[i + 6].parse::<f64>().unwrap_or(0.0),
+                            current_y,
+                            is_relative,
+                        ) + noise(config.amplitude);
                         result.push_str(&format!(
                             " {:.3} {:.3} {:.3} {:.0} {:.0} {:.3} {:.3}",
                             rx, ry, rot, large_arc, sweep, x, y
                         ));
+                        current_x = x;
+                        current_y = y;
                         i += 7;
                     }
                 }
-                'Z' => {}
+                'Z' => {
+                    current_x = start_x;
+                    current_y = start_y;
+                }
                 _ => {}
             }
         } else {
@@ -321,4 +471,40 @@ fn jitter_path_d(d: &str, config: &JitterConfig) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_jitter_path_d_relative_commands() {
+        let d = "m 10 10 l 20 0 c 10 0 10 10 0 10 z";
+        let config = JitterConfig::default();
+        let result = jitter_path_d(d, &config);
+        // 相対コマンドが正しく処理され、結果にノイズが含まれることを確認
+        assert!(result.starts_with('m'));
+        assert!(result.contains('l'));
+        assert!(result.contains('c'));
+        assert!(result.contains('z'));
+    }
+
+    #[test]
+    fn test_tokenize_d_with_exponents() {
+        let d = "M 1e-5 1e5 L 2.5e-2 3.0e+1";
+        let tokens = tokenize_d(d);
+        // 指数表記が正しくトークン化されることを確認
+        assert!(tokens.contains(&"1e-5".to_string()));
+        assert!(tokens.contains(&"1e5".to_string()));
+        assert!(tokens.contains(&"2.5e-2".to_string()));
+        assert!(tokens.contains(&"3.0e+1".to_string()));
+    }
+
+    #[test]
+    fn test_is_command_excludes_e() {
+        assert!(!is_command("e"));
+        assert!(!is_command("E"));
+        assert!(is_command("M"));
+        assert!(is_command("m"));
+    }
 }
