@@ -2,7 +2,7 @@
 
 Hand-drawn style diagram renderer CLI.
 
-Turn Mermaid, draw.io, and any SVG into sketchy SVG/PNG/WebP.
+Turn SVG into sketchy SVG today. Mermaid, draw.io direct input, and raster export are planned.
 
 ## Installation
 
@@ -13,24 +13,27 @@ cargo install blueprinter
 ## Usage
 
 ```bash
-# Render a Mermaid or SVG file with the default blueprint theme
-blueprinter render -i diagram.mmd -o output.svg
-
-# Transform an existing SVG with a specific theme and seed
-blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
-
-# Convert SVG to PNG
-blueprinter convert -i input.svg -o output.png
+# Transform an existing SVG with the default blueprint theme
+blueprinter transform -i input.svg -o output.svg --theme blueprint --seed 42
 ```
 
 ## Themes
 
-- `blueprint` — Technical drawing on blue grid paper (default)
-- `sumi` — Japanese ink wash painting
-- `chalk` — White chalk on a blackboard
-- `marker` — Bold neon marker strokes
-- `watercolor` — Soft pigment bleeding
-- `manga` — Screentone patterns and speed lines
+- `blueprint` — accepted today; full technical drawing styling is planned
+- `sumi` — planned Japanese ink wash painting
+- `chalk` — planned white chalk on a blackboard
+- `marker` — planned bold neon marker strokes
+- `watercolor` — planned soft pigment bleeding
+- `manga` — planned screentone patterns and speed lines
+
+## Current Status
+
+- `transform` works for SVG input and writes SVG output
+- only the `blueprint` theme name is accepted; full theme styling is still planned
+- `--seed` is supported for reproducible SVG jitter on the same SVG structure; changing earlier jittered elements can change later seeded jitter
+- XML declarations, comments, processing instructions, doctypes, and CDATA boundaries are not preserved yet
+- symbols and definitions under `defs`/`symbol`/`marker` are preserved without jitter, including shapes later referenced by `use`
+- `render` and `convert` are not implemented yet
 
 ## License
 

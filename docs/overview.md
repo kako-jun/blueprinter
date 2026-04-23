@@ -1,12 +1,12 @@
 # blueprinter Overview
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ## What is blueprinter?
 
-**blueprinter** is a CLI tool that renders diagrams in a hand-drawn, sketchy style.
-It takes Mermaid definitions, draw.io SVG exports, or any arbitrary SVG as input,
-and produces stylized output in SVG, PNG, or WebP format.
+**blueprinter** is a CLI tool for turning SVG diagrams into a hand-drawn, sketchy style.
+Today it accepts arbitrary SVG as input and produces stylized SVG output.
+Mermaid definitions, draw.io direct input, PNG, and WebP are planned follow-up phases.
 
 The core idea: **do not recompute layout**. Instead, take an already-laid-out SVG
 and transform its visual appearance — strokes, fills, and filters — to mimic
@@ -33,16 +33,25 @@ any SVG-producing tool can be a front-end.
 
 ### SVG-first Pipeline
 
-The internal pipeline is always SVG → SVG → raster.
-Even when the final output is PNG or WebP, the styling pass produces an intermediate SVG.
+The internal pipeline is SVG → SVG first.
+PNG and WebP export are planned later, and will rasterize from the transformed SVG.
 This preserves vector quality for downstream editing and makes the transformation
 inspectable and debuggable.
+
+The current serializer preserves non-jittered element structure, attributes,
+namespaces, and text, but it does not preserve XML declarations, comments,
+processing instructions, doctypes, or CDATA boundaries yet. Non-visual
+definition containers such as `defs`, `symbol`, and `marker` are intentionally
+left unchanged; shapes referenced via `use` therefore remain as authored until
+symbol-level styling is implemented.
 
 ### Randomness with Reproducibility
 
 Hand-drawn style requires variation. Every run produces a slightly different result.
 However, `--seed` locks the random number generator, making output deterministic
-for documentation builds, CI snapshots, or collaborative reviews.
+for documentation builds, CI snapshots, or collaborative reviews. Determinism is
+defined for the same SVG structure; adding or removing earlier jittered elements
+can change the seeded jitter applied to later elements.
 
 ### No Editor
 
@@ -53,10 +62,10 @@ This keeps the scope bounded and the codebase maintainable.
 ## Architecture
 
 ```
-Input (Mermaid / draw.io SVG / any SVG)
+Input SVG
     │
     ▼
-[ Mermaid parser / SVG loader ]
+[ SVG loader ]
     │
     ▼
 [ Layout-preserving SVG filter ]
@@ -68,27 +77,27 @@ Input (Mermaid / draw.io SVG / any SVG)
 Intermediate SVG
     │
     ▼
-[ Rasterizer (resvg) ]  ──optional──►  PNG / WebP
+[ Rasterizer (resvg, planned) ]  ──optional──►  PNG / WebP
     │
     ▼
 Output SVG
 ```
 
-## Themes (Planned)
+## Themes
 
 | Theme | Description |
 |---|---|
-| `blueprint` | Default. Technical drawing on blue grid paper. |
-| `sumi` | Japanese ink wash painting on washi paper. |
-| `chalk` | White chalk on a blackboard. |
-| `marker` | Bold neon marker strokes on dark background. |
-| `watercolor` | Soft pigment bleeding and paper grain. |
-| `manga` | Screentone patterns and speed lines. |
+| `blueprint` | Accepted by the CLI today; full palette/grid styling is planned. |
+| `sumi` | Planned. Japanese ink wash painting on washi paper. |
+| `chalk` | Planned. White chalk on a blackboard. |
+| `marker` | Planned. Bold neon marker strokes on dark background. |
+| `watercolor` | Planned. Soft pigment bleeding and paper grain. |
+| `manga` | Planned. Screentone patterns and speed lines. |
 
 ## Technology Stack
 
 - **Rust** — CLI and pipeline
 - **clap** — CLI argument parsing and subcommands
 - **SVG parsing** — roxmltree or similar for SVG DOM manipulation
-- **resvg** — SVG rasterization for PNG/WebP output
-- **mmdc** — External Mermaid CLI for Mermaid → SVG conversion
+- **resvg** — planned SVG rasterization for PNG/WebP output
+- **mmdc** — planned external Mermaid CLI for Mermaid → SVG conversion

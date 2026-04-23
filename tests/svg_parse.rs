@@ -75,3 +75,16 @@ fn test_unknown_element_passes_through() {
         }
     );
 }
+
+#[test]
+fn test_parse_polyline_points_with_space_separated_coordinates() {
+    let svg = r#"<svg><polyline points="0 0 10 10 20,20" /></svg>"#;
+    let primitives = parse_svg(svg).unwrap();
+
+    match &primitives[0] {
+        Primitive::Polyline { points, .. } => {
+            assert_eq!(points, &vec![(0.0, 0.0), (10.0, 10.0), (20.0, 20.0)]);
+        }
+        other => panic!("expected polyline, got {other:?}"),
+    }
+}

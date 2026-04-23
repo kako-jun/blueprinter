@@ -1,6 +1,6 @@
 # blueprinter - Hand-drawn Style Diagram Renderer
 
-図の手書き風レンダラー CLI。Mermaid / draw.io SVG / 任意の SVG を手書き風の SVG/PNG/WebP に変換する。
+図の手書き風レンダラー CLI。現状は任意の SVG を手書き風 SVG に変換する。Mermaid / draw.io 直接入力、PNG/WebP 出力は予定。
 
 ## ドキュメント
 
@@ -37,7 +37,7 @@ src/
 ## 主要な設計判断
 
 - **レイアウト計算はしない** — 入力 SVG の座標をそのまま使い、見た目（stroke, fill, filter）のみを変換する
-- **SVG→SVG が核** — フォーマット変換（PNG/WebP）は resvg によるレンダリングの後工程
-- **毎回違う出力** — 手書き風のランダム性を持たせる。`--seed` で再現可能
+- **SVG→SVG が核** — 現状の実装対象。フォーマット変換（PNG/WebP）は resvg による後工程として予定
+- **毎回違う出力** — 手書き風のランダム性を持たせる。`--seed` で再現可能（transform 実装済み）
 - **エディタは作らない** — CLI で変換するだけ。入力は既存のエディタ・ツールで作成する
-- **mmdc 連携** — Mermaid 入力の場合は mermaid-cli（mmdc）を外部コマンドとして呼び出す
+- **mmdc 連携** — Mermaid 入力対応時は mermaid-cli（mmdc）を外部コマンドとして呼び出す予定
