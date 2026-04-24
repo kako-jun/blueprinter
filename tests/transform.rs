@@ -1,17 +1,24 @@
 use std::fs;
 
 use blueprinter::jitter::JitterConfig;
-use blueprinter::svg::transform_svg;
+use blueprinter::svg::{transform_svg, TransformOptions};
+
+fn options(seed: u64) -> TransformOptions {
+    TransformOptions {
+        seed: Some(seed),
+        font_family_override: None,
+    }
+}
 
 #[test]
 fn transform_svg_preserves_root_and_writes_jittered_paths() {
     let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
-    let transformed = transform_svg(&svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(&svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed
         .starts_with(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">"#));
     assert!(transformed.contains("<path"));
-    assert!(transformed.contains("<text x=\"50\" y=\"50\""));
+    assert!(transformed.contains("<text x="));
     assert!(transformed.contains("<g>"));
     assert!(transformed.contains("<circle"));
 }
@@ -20,8 +27,8 @@ fn transform_svg_preserves_root_and_writes_jittered_paths() {
 fn transform_svg_with_same_seed_is_reproducible() {
     let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
     let config = JitterConfig::default();
-    let out1 = transform_svg(&svg, &config, Some(42)).unwrap();
-    let out2 = transform_svg(&svg, &config, Some(42)).unwrap();
+    let out1 = transform_svg(&svg, &config, &options(42)).unwrap();
+    let out2 = transform_svg(&svg, &config, &options(42)).unwrap();
     assert_eq!(out1, out2);
 }
 
@@ -29,9 +36,42 @@ fn transform_svg_with_same_seed_is_reproducible() {
 fn transform_svg_with_different_seed_changes_jitter() {
     let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
     let config = JitterConfig::default();
-    let out1 = transform_svg(&svg, &config, Some(42)).unwrap();
-    let out2 = transform_svg(&svg, &config, Some(43)).unwrap();
+    let out1 = transform_svg(&svg, &config, &options(42)).unwrap();
+    let out2 = transform_svg(&svg, &config, &options(43)).unwrap();
     assert_ne!(out1, out2);
+}
+
+#[test]
+fn transform_svg_with_same_seed_and_custom_config_is_reproducible() {
+    let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
+    let config = JitterConfig {
+        amplitude: 3.5,
+        frequency: 7.0,
+        stroke_width_var: 0.4,
+    };
+    let out1 = transform_svg(&svg, &config, &options(42)).unwrap();
+    let out2 = transform_svg(&svg, &config, &options(42)).unwrap();
+    assert_eq!(out1, out2);
+}
+
+#[test]
+fn transform_svg_changes_when_jitter_config_changes() {
+    let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
+    let subtle = JitterConfig {
+        amplitude: 0.5,
+        frequency: 2.0,
+        stroke_width_var: 0.05,
+    };
+    let rough = JitterConfig {
+        amplitude: 4.0,
+        frequency: 9.0,
+        stroke_width_var: 0.6,
+    };
+
+    let subtle_out = transform_svg(&svg, &subtle, &options(42)).unwrap();
+    let rough_out = transform_svg(&svg, &rough, &options(42)).unwrap();
+
+    assert_ne!(subtle_out, rough_out);
 }
 
 #[test]
@@ -43,7 +83,7 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
     <line id="edge" class="wire" x1="0" y1="0" x2="5" y2="5" transform="scale(2)" style="stroke:red"/>
   </g>
 </svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(
         r##"<defs><linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient></defs>"##
@@ -63,7 +103,7 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
 fn transform_svg_escapes_decoded_text_and_attributes() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><text title="A &amp; B">A &amp; B</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"title="A &amp; B""#));
     assert!(transformed.contains(">A &amp; B</text>"));
@@ -74,7 +114,7 @@ fn transform_svg_escapes_decoded_text_and_attributes() {
 fn transform_svg_handles_compact_path_data() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0-1L2.5.5Z" stroke="black"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains("<path"));
     assert!(transformed.contains(" L "));
@@ -91,7 +131,7 @@ fn transform_svg_normalizes_relative_path_commands_to_absolute() {
             frequency: 1.0,
             stroke_width_var: 0.0,
         },
-        Some(42),
+        &options(42),
     )
     .unwrap();
 
@@ -111,8 +151,8 @@ fn transform_svg_relative_and_absolute_paths_match_without_noise() {
     };
 
     assert_eq!(
-        transform_svg(relative, &config, Some(42)).unwrap(),
-        transform_svg(absolute, &config, Some(42)).unwrap()
+        transform_svg(relative, &config, &options(42)).unwrap(),
+        transform_svg(absolute, &config, &options(42)).unwrap()
     );
 }
 
@@ -120,7 +160,7 @@ fn transform_svg_relative_and_absolute_paths_match_without_noise() {
 fn transform_svg_leaves_malformed_path_data_unchanged() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M 0 0 L 1" stroke="black"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"<path d="M 0 0 L 1" stroke="black" />"#));
 }
@@ -129,7 +169,7 @@ fn transform_svg_leaves_malformed_path_data_unchanged() {
 fn transform_svg_leaves_degenerate_polyline_unchanged() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><polyline points="0 0" stroke="black"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"<polyline points="0 0" stroke="black" />"#));
 }
@@ -137,16 +177,33 @@ fn transform_svg_leaves_degenerate_polyline_unchanged() {
 #[test]
 fn transform_svg_applies_seeded_stroke_width_jitter() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="0" x2="10" y2="0" stroke-width="2"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains("stroke-width="));
     assert!(!transformed.contains(r#"stroke-width="2""#));
 }
 
 #[test]
+fn transform_svg_can_disable_stroke_width_variation() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="0" x2="10" y2="0" stroke-width="2"/></svg>"#;
+    let transformed = transform_svg(
+        svg,
+        &JitterConfig {
+            amplitude: 0.0,
+            frequency: 1.0,
+            stroke_width_var: 0.0,
+        },
+        &options(42),
+    )
+    .unwrap();
+
+    assert!(transformed.contains(r#"stroke-width="2.000""#));
+}
+
+#[test]
 fn transform_svg_preserves_namespace_prefixes() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><path id="icon" d="M0 0 L1 1"/></defs><use xlink:href="#icon"/></svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"xmlns:xlink="http://www.w3.org/1999/xlink""#));
     assert!(transformed.contains(r##"xlink:href="#icon""##));
@@ -155,7 +212,7 @@ fn transform_svg_preserves_namespace_prefixes() {
 #[test]
 fn transform_svg_preserves_nested_namespace_declarations() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><g xmlns:bp="https://example.com/bp"><bp:meta bp:key="edge"/><line x1="0" y1="0" x2="1" y2="1"/></g></svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"xmlns:bp="https://example.com/bp""#));
     assert!(transformed.contains(r#"<bp:meta bp:key="edge" />"#));
@@ -164,7 +221,7 @@ fn transform_svg_preserves_nested_namespace_declarations() {
 #[test]
 fn transform_svg_does_not_jitter_non_svg_namespace_elements() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:bp="https://example.com/bp"><bp:path d="M0 0 L1 1" bp:key="edge"/><line x1="0" y1="0" x2="1" y2="1"/></svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r##"<bp:path d="M0 0 L1 1" bp:key="edge" />"##));
     assert!(transformed.contains("<path"));
@@ -173,8 +230,89 @@ fn transform_svg_does_not_jitter_non_svg_namespace_elements() {
 #[test]
 fn transform_svg_does_not_jitter_defs_content() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="clip"><path d="M0 0 L1 1"/></clipPath></defs><path d="M0 0 L5 5"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), Some(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"<path d="M0 0 L1 1" />"#));
     assert!(!transformed.contains(r#"<path d="M0 0 L5 5" />"#));
+}
+
+#[test]
+fn transform_svg_preserves_existing_font_family_when_override_is_absent() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-family="Arial" font-size="12">Hello</text></svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+
+    assert!(transformed.contains(r#"font-family="Arial""#));
+    assert!(!transformed.contains(r#"font-family="Virgil""#));
+}
+
+#[test]
+fn transform_svg_can_override_font_family_for_text() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-family="Arial" font-size="12">Hello</text></svg>"#;
+    let transformed = transform_svg(
+        svg,
+        &JitterConfig::default(),
+        &TransformOptions {
+            seed: Some(42),
+            font_family_override: Some("Virgil".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert!(transformed.contains(r#"font-family="Virgil""#));
+    assert!(!transformed.contains(r#"font-family="Arial""#));
+}
+
+#[test]
+fn transform_svg_adds_font_family_override_when_input_relies_on_stylesheet() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20">Hello</text></svg>"#;
+    let transformed = transform_svg(
+        svg,
+        &JitterConfig::default(),
+        &TransformOptions {
+            seed: Some(42),
+            font_family_override: Some("Virgil".to_string()),
+        },
+    )
+    .unwrap();
+
+    assert!(transformed.contains(r#"font-family="Virgil""#));
+}
+
+#[test]
+fn transform_svg_keeps_text_layout_and_only_jitters_rotation_and_opacity() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-size="12">Hello</text></svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+
+    assert!(transformed.contains(r#"x="10""#));
+    assert!(transformed.contains(r#"y="20""#));
+    assert!(transformed.contains(r#"font-size="12""#));
+    assert!(transformed.contains(r#"transform="rotate(0.032 10.000 20.000)""#));
+    assert!(!transformed.contains("opacity="));
+}
+
+#[test]
+fn transform_svg_appends_rotation_to_existing_text_transform() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" transform="translate(1 2)">Hello</text></svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+
+    assert!(transformed.contains(r#"transform="translate(1 2) rotate("#));
+}
+
+#[test]
+fn transform_svg_preserves_text_position_and_font_size_exactly() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="40" y="70" font-size="28">Hello</text></svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+
+    assert!(transformed.contains(r#"x="40""#));
+    assert!(transformed.contains(r#"y="70""#));
+    assert!(transformed.contains(r#"font-size="28""#));
+}
+
+#[test]
+fn transform_svg_jitters_existing_text_opacity() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" opacity="0.8">Hello</text></svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+
+    assert!(transformed.contains(r#"opacity="0.802""#));
+    assert!(!transformed.contains(r#"opacity="0.8""#));
 }

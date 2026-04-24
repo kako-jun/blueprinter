@@ -2,6 +2,7 @@ use crate::svg::Primitive;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct JitterConfig {
     pub amplitude: f64,
     pub frequency: f64,

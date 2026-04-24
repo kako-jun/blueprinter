@@ -1,3 +1,5 @@
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use roxmltree::{Document, Node};
 
 use crate::jitter::{jitter_primitive_path_with_seed, JitterConfig, JitteredPath};
@@ -10,6 +12,12 @@ const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 #[derive(Debug, PartialEq)]
 pub enum TransformError {
     XmlParseError(String),
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TransformOptions {
+    pub seed: Option<u64>,
+    pub font_family_override: Option<String>,
 }
 
 impl std::fmt::Display for TransformError {
@@ -25,16 +33,22 @@ impl std::error::Error for TransformError {}
 pub fn transform_svg(
     input: &str,
     config: &JitterConfig,
-    seed: Option<u64>,
+    options: &TransformOptions,
 ) -> Result<String, TransformError> {
     let doc = Document::parse(input).map_err(|e| TransformError::XmlParseError(e.to_string()))?;
-    let mut state = seed;
-    Ok(serialize_node(doc.root_element(), config, &mut state))
+    let mut state = options.seed;
+    Ok(serialize_node(
+        doc.root_element(),
+        config,
+        options,
+        &mut state,
+    ))
 }
 
 fn serialize_node(
     node: Node<'_, '_>,
     config: &JitterConfig,
+    options: &TransformOptions,
     seed_state: &mut Option<u64>,
 ) -> String {
     if node.is_text() {
@@ -51,7 +65,7 @@ fn serialize_node(
         }
     }
 
-    serialize_original_element(node, config, seed_state)
+    serialize_original_element(node, config, options, seed_state)
 }
 
 fn should_jitter(node: &Node<'_, '_>) -> bool {
@@ -137,6 +151,7 @@ fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath) -> String 
 fn serialize_original_element(
     node: Node<'_, '_>,
     config: &JitterConfig,
+    options: &TransformOptions,
     seed_state: &mut Option<u64>,
 ) -> String {
     let tag = qualified_tag_name(node);
@@ -154,11 +169,15 @@ fn serialize_original_element(
             None => out.push_str(&format_attr("xmlns", namespace.uri())),
         }
     }
-    for attr in node.attributes() {
-        out.push_str(&format_attr(
-            &qualified_attr_name(node, &attr),
-            attr.value(),
-        ));
+    if should_jitter_text(&node) {
+        serialize_text_attrs(node, config, options, seed_state, &mut out);
+    } else {
+        for attr in node.attributes() {
+            out.push_str(&format_attr(
+                &qualified_attr_name(node, &attr),
+                attr.value(),
+            ));
+        }
     }
 
     let children: Vec<_> = node.children().collect();
@@ -169,7 +188,7 @@ fn serialize_original_element(
 
     out.push('>');
     for child in children {
-        out.push_str(&serialize_node(child, config, seed_state));
+        out.push_str(&serialize_node(child, config, options, seed_state));
     }
     out.push_str("</");
     out.push_str(&tag);
@@ -233,6 +252,146 @@ fn is_geometry_attr(tag: &str, name: &str) -> bool {
             | ("polyline", "points")
             | ("path", "d")
     )
+}
+
+fn should_jitter_text(node: &Node<'_, '_>) -> bool {
+    if is_inside_non_visual_container(node) || !is_svg_element(node) {
+        return false;
+    }
+
+    matches!(node.tag_name().name(), "text" | "tspan")
+}
+
+fn serialize_text_attrs(
+    node: Node<'_, '_>,
+    config: &JitterConfig,
+    options: &TransformOptions,
+    seed_state: &mut Option<u64>,
+    out: &mut String,
+) {
+    let mut rng = next_rng(seed_state);
+    let rotation_amplitude = (config.amplitude * 0.3).clamp(0.0, 1.5);
+    let opacity_amplitude = (config.stroke_width_var * 0.2).clamp(0.0, 0.08);
+    let mut saw_font_family = false;
+    let mut saw_transform = false;
+    let mut saw_opacity = false;
+    let mut anchor_x = None;
+    let mut anchor_y = None;
+
+    for attr in node.attributes() {
+        let qualified_name = qualified_attr_name(node, &attr);
+        match attr.name() {
+            "x" | "y" => {
+                if let Ok(value) = attr.value().parse::<f64>() {
+                    if attr.name() == "x" {
+                        anchor_x = Some(value);
+                    } else {
+                        anchor_y = Some(value);
+                    }
+                    out.push_str(&format_attr(&qualified_name, attr.value()));
+                } else {
+                    out.push_str(&format_attr(&qualified_name, attr.value()));
+                }
+            }
+            "font-family" => {
+                saw_font_family = true;
+                let value = options
+                    .font_family_override
+                    .as_deref()
+                    .unwrap_or(attr.value());
+                out.push_str(&format_attr(&qualified_name, value));
+            }
+            "transform" => {
+                saw_transform = true;
+                let value = append_text_rotation(
+                    attr.value(),
+                    &mut rng,
+                    rotation_amplitude,
+                    anchor_x,
+                    anchor_y,
+                );
+                out.push_str(&format_attr(&qualified_name, &value));
+            }
+            "opacity" => {
+                saw_opacity = true;
+                if let Ok(value) = attr.value().parse::<f64>() {
+                    let jittered = jittered_opacity(value, &mut rng, opacity_amplitude);
+                    out.push_str(&format_attr(&qualified_name, &format!("{jittered:.3}")));
+                } else {
+                    out.push_str(&format_attr(&qualified_name, attr.value()));
+                }
+            }
+            _ => out.push_str(&format_attr(&qualified_name, attr.value())),
+        }
+    }
+
+    if !saw_font_family {
+        if let Some(font_family) = &options.font_family_override {
+            out.push_str(&format_attr("font-family", font_family));
+        }
+    }
+
+    if !saw_transform {
+        if let Some(value) = text_rotation(&mut rng, rotation_amplitude, anchor_x, anchor_y) {
+            out.push_str(&format_attr("transform", &value));
+        }
+    }
+
+    if !saw_opacity {
+        let jittered = jittered_opacity(1.0, &mut rng, opacity_amplitude);
+        if jittered < 0.999 {
+            out.push_str(&format_attr("opacity", &format!("{jittered:.3}")));
+        }
+    }
+}
+
+fn next_rng(seed_state: &mut Option<u64>) -> StdRng {
+    let seed = *seed_state;
+    if let Some(seed) = seed {
+        *seed_state = Some(seed.wrapping_add(1));
+        StdRng::seed_from_u64(seed)
+    } else {
+        StdRng::from_entropy()
+    }
+}
+
+fn uniform_noise<R: Rng + ?Sized>(rng: &mut R, amplitude: f64) -> f64 {
+    if amplitude == 0.0 {
+        return 0.0;
+    }
+    (rng.gen::<f64>() - 0.5) * 2.0 * amplitude
+}
+
+fn append_text_rotation<R: Rng + ?Sized>(
+    existing: &str,
+    rng: &mut R,
+    amplitude: f64,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> String {
+    match text_rotation(rng, amplitude, x, y) {
+        Some(rotation) if !existing.trim().is_empty() => {
+            format!("{} {}", existing.trim(), rotation)
+        }
+        Some(rotation) => rotation,
+        None => existing.to_string(),
+    }
+}
+
+fn text_rotation<R: Rng + ?Sized>(
+    rng: &mut R,
+    amplitude: f64,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Option<String> {
+    let x = x?;
+    let y = y?;
+    let angle = uniform_noise(rng, amplitude);
+    Some(format!("rotate({angle:.3} {x:.3} {y:.3})"))
+}
+
+fn jittered_opacity<R: Rng + ?Sized>(base: f64, rng: &mut R, amplitude: f64) -> f64 {
+    (base + uniform_noise(rng, amplitude)).clamp(0.2, 1.0)
 }
 
 fn format_attr(name: &str, value: &str) -> String {

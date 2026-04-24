@@ -51,7 +51,13 @@ Hand-drawn style requires variation. Every run produces a slightly different res
 However, `--seed` locks the random number generator, making output deterministic
 for documentation builds, CI snapshots, or collaborative reviews. Determinism is
 defined for the same SVG structure; adding or removing earlier jittered elements
-can change the seeded jitter applied to later elements.
+can change the seeded jitter applied to later elements. The current CLI also exposes
+`--jitter-amplitude`, `--jitter-frequency`, and `--jitter-stroke-width-var` so
+users can compare subtle and rough variants intentionally instead of relying on
+a single hardcoded style. Text can also be overridden with `--font-family`; if no
+override is provided, blueprinter preserves the font choice already encoded in the
+input SVG and applies only subtle seeded `rotation` and `opacity` jitter while
+preserving the original text layout box.
 
 ### No Editor
 
