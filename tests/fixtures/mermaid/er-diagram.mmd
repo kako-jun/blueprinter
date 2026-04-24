@@ -1,0 +1,31 @@
+erDiagram
+    ARTICLE ||--o{ DIAGRAM : contains
+    DIAGRAM ||--|{ NODE : includes
+    DIAGRAM ||--|{ EDGE : includes
+    THEME ||--o{ DIAGRAM : styles
+    REVIEW ||--|| DIAGRAM : evaluates
+
+    ARTICLE {
+        string slug
+        string title
+    }
+    DIAGRAM {
+        string format
+        string source
+    }
+    NODE {
+        string label
+        string shape
+    }
+    EDGE {
+        string kind
+        string direction
+    }
+    THEME {
+        string name
+        string palette
+    }
+    REVIEW {
+        bool readable
+        bool charming
+    }

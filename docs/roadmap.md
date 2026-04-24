@@ -1,6 +1,6 @@
 # blueprinter ロードマップ
 
-最終更新: 2026-04-23
+最終更新: 2026-04-24
 
 ## 完了済み
 
@@ -39,6 +39,13 @@
 - [x] 線の太さ揺れ
 - [x] transform CLI から SVG 入力 → SVG 出力まで接続
 - [x] `--seed` による transform 出力の再現性
+
+### Phase 2.5: Mermaid見た目PoC（#20）
+
+- [x] Mermaid fixture 3本（flowchart / sequence / ER）追加
+- [x] `mmdc` → baseline SVG → `blueprinter transform` の PoC スクリプト追加
+- [x] baseline / transformed の見比べ手順を docs 化
+- [x] fixtures / script / docs の整合を守る軽量テスト追加
 
 ## 残タスク
 

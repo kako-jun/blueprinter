@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant A as Agent
+    participant B as blueprinter
+    participant R as Reviewer
+
+    A->>B: transform diagram.svg
+    B-->>A: sketchy svg
+    A->>R: compare baseline vs transformed
+    R-->>A: too noisy around labels
+    A->>B: tune config / theme
+    B-->>A: second pass

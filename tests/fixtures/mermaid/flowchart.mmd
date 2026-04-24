@@ -1,0 +1,8 @@
+flowchart TD
+    user([User]) --> upload[Upload diagram source]
+    upload --> render[Render with Mermaid]
+    render --> transform[blueprinter transform]
+    transform --> review{Looks charming?}
+    review -->|yes| publish[Ship the aesthetic]
+    review -->|no| tweak[Tune jitter and themes]
+    tweak --> transform

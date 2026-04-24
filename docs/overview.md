@@ -1,6 +1,6 @@
 # blueprinter Overview
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
 
 ## What is blueprinter?
 
@@ -45,6 +45,11 @@ definition containers such as `defs`, `symbol`, and `marker` are intentionally
 left unchanged; shapes referenced via `use` therefore remain as authored until
 symbol-level styling is implemented.
 
+For current confidence-building, the repository includes a Mermaid proof of
+concept workflow that generates representative diagrams via `mmdc` and then
+runs `blueprinter transform` on the resulting SVG. This is intentionally
+separate from full Mermaid direct-input support.
+
 ### Randomness with Reproducibility
 
 Hand-drawn style requires variation. Every run produces a slightly different result.
@@ -74,13 +79,9 @@ Input SVG
     │    ├── Color palette swap (theme)
     │    └── Random offset / jitter
     ▼
-Intermediate SVG
-    │
-    ▼
-[ Rasterizer (resvg, planned) ]  ──optional──►  PNG / WebP
-    │
-    ▼
 Output SVG
+    │
+    └── optional raster export (planned via resvg) ──► PNG / WebP
 ```
 
 ## Themes
@@ -100,4 +101,4 @@ Output SVG
 - **clap** — CLI argument parsing and subcommands
 - **SVG parsing** — roxmltree or similar for SVG DOM manipulation
 - **resvg** — planned SVG rasterization for PNG/WebP output
-- **mmdc** — planned external Mermaid CLI for Mermaid → SVG conversion
+- **mmdc** — already usable as a PoC dependency for Mermaid → SVG fixture generation; direct Mermaid input support inside blueprinter is still planned
