@@ -7,8 +7,10 @@ Turn SVG into sketchy SVG today. Mermaid, draw.io direct input, and raster expor
 ## Installation
 
 ```bash
-cargo install blueprinter
+cargo install --git https://github.com/kako-jun/blueprinter blueprinter
 ```
+
+`blueprinter` is not published to crates.io yet.
 
 ## Usage
 
@@ -16,6 +18,19 @@ cargo install blueprinter
 # Transform an existing SVG with the default blueprint theme
 blueprinter transform -i input.svg -o output.svg --theme blueprint --seed 42
 ```
+
+## Mermaid PoC
+
+If you want to evaluate whether blueprinter is visually compelling on real
+diagram shapes today, run the Mermaid proof-of-concept workflow:
+
+```bash
+scripts/mermaid-poc.sh
+```
+
+This renders a small Mermaid fixture set to baseline SVG, then runs
+`blueprinter transform` so you can compare baseline vs stylized output side by
+side. See [docs/poc.md](docs/poc.md) for details.
 
 ## Themes
 
