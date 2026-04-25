@@ -7,6 +7,7 @@ fn options(seed: u64) -> TransformOptions {
     TransformOptions {
         seed: Some(seed),
         font_family_override: None,
+        theme: Default::default(),
     }
 }
 
@@ -258,6 +259,7 @@ fn transform_svg_can_override_font_family_for_text() {
         &TransformOptions {
             seed: Some(42),
             font_family_override: Some("Virgil".to_string()),
+            theme: Default::default(),
         },
     )
     .unwrap();
@@ -275,6 +277,7 @@ fn transform_svg_adds_font_family_override_when_input_relies_on_stylesheet() {
         &TransformOptions {
             seed: Some(42),
             font_family_override: Some("Virgil".to_string()),
+            theme: Default::default(),
         },
     )
     .unwrap();

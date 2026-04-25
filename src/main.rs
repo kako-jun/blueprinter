@@ -127,6 +127,7 @@ fn main() {
             let options = TransformOptions {
                 seed,
                 font_family_override: font_family,
+                theme: Default::default(),
             };
             let transformed = match transform_svg(&svg, &config, &options) {
                 Ok(svg) => svg,

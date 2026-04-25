@@ -9,6 +9,18 @@ const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    None,
+    Blueprint,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme::None
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TransformError {
     XmlParseError(String),
@@ -18,6 +30,7 @@ pub enum TransformError {
 pub struct TransformOptions {
     pub seed: Option<u64>,
     pub font_family_override: Option<String>,
+    pub theme: Theme,
 }
 
 impl std::fmt::Display for TransformError {
