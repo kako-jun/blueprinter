@@ -22,6 +22,8 @@ pub fn export_to_png(
         .map_err(|e| format!("Failed to encode PNG: {e}"))
 }
 
+/// Encodes the rasterized SVG as lossless WebP. Lossless preserves the sharp
+/// edges of strokes and screentone patterns, which the lossy encoder smears.
 pub fn export_to_webp(
     svg: &str,
     dimensions: Option<(Option<u32>, Option<u32>)>,
@@ -38,10 +40,8 @@ pub fn export_to_webp(
     let render_ts = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, render_ts, &mut pixmap.as_mut());
 
-    // Encode to WebP using webp::Encoder
-    // Note: webp crate is not available in Cargo.toml, so we use tiny-skia's png output instead
-    // and would need an external tool or additional dependency for WebP support
-    Err("WebP encoding requires additional dependencies. Use PNG format or convert with external tools.".to_string())
+    let encoder = webp::Encoder::from_rgba(pixmap.data(), width, height);
+    Ok(encoder.encode_lossless().to_vec())
 }
 
 fn calculate_dimensions(
@@ -150,5 +150,43 @@ mod tests {
         let svg = "not valid svg";
         let result = export_to_png(svg, None, 1.0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_export_to_webp_simple_svg() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <circle cx="50" cy="50" r="40" fill="red"/>
+        </svg>"#;
+
+        let data = export_to_webp(svg, None, 1.0).expect("webp encode");
+        assert!(!data.is_empty());
+        // RIFF container header + WEBP fourcc
+        assert_eq!(&data[0..4], b"RIFF");
+        assert_eq!(&data[8..12], b"WEBP");
+    }
+
+    #[test]
+    fn test_export_to_webp_with_scale() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <rect x="10" y="10" width="80" height="80" fill="blue"/>
+        </svg>"#;
+
+        let data = export_to_webp(svg, None, 2.0).expect("webp encode");
+        assert_eq!(&data[0..4], b"RIFF");
+    }
+
+    #[test]
+    fn test_export_to_webp_with_explicit_dimensions() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <line x1="0" y1="0" x2="100" y2="100" stroke="black"/>
+        </svg>"#;
+
+        let data = export_to_webp(svg, Some((Some(200), Some(200))), 1.0).expect("webp encode");
+        assert_eq!(&data[0..4], b"RIFF");
+    }
+
+    #[test]
+    fn test_export_to_webp_invalid_svg() {
+        assert!(export_to_webp("not valid svg", None, 1.0).is_err());
     }
 }

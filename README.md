@@ -37,6 +37,11 @@ blueprinter transform -i input.svg -o output.png \
 blueprinter transform -i input.svg -o output.png \
   --format png \
   --width 800
+
+# Export to lossless WebP (smaller than PNG for diagram content)
+blueprinter transform -i input.svg -o output.webp \
+  --format webp \
+  --width 800
 ```
 
 `--jitter-amplitude` controls how far coordinates can wobble, `--jitter-frequency`
@@ -130,6 +135,7 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 ### Implemented
 - `transform` command: SVG → hand-drawn SVG transformation
 - PNG output: `--format png`, with `--scale`, `--width`, `--height` options
+- WebP output: `--format webp` (lossless; same flags as PNG)
 - Blueprint theme: complete with stroke/fill styling and background
 - **Sumi theme**: ink wash effect with grayscale colors and blur filters
 - **Watercolor theme**: pastel color palette with diffuse bleed effect
@@ -142,7 +148,6 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 - Shape jittering: `rect`, `line`, `polyline`, `path`, `circle`, `ellipse`, `polygon` (latter three via Bezier approximation)
 
 ### Planned
-- WebP output (currently PNG only)
 - More screentone variants and (eventually) speed-line layout for manga
 - Full theme styling for blueprint (currently basic)
 - Text outline conversion for advanced effects
