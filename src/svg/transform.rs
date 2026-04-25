@@ -206,6 +206,13 @@ fn serialize_jittered_path(
     let filter_id = get_theme_filter_id(options.theme);
     out.push_str(&format!(r#" filter="url(#{})""#, filter_id));
     out.push_str(" />");
+
+    // Add stroke replicas for watercolor/sumi themes
+    if should_emit_stroke_replicas(options.theme, source_tag) {
+        let replicas = emit_stroke_replicas(&out, source_tag, options, seed_state);
+        out.push_str(&replicas);
+    }
+
     out
 }
 
@@ -431,6 +438,87 @@ fn apply_theme_fill(theme: Theme, fill: &str, tag: &str) -> String {
         }
         Theme::None => fill.to_string(),
     }
+}
+
+fn remove_stroke_opacity(s: &str) -> String {
+    // Remove stroke-opacity="0.###" pattern
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == ' ' && chars.peek() == Some(&'s') {
+            // Possible start of " stroke-opacity"
+            let rest: String = chars.clone().collect();
+            if rest.starts_with("stroke-opacity=\"") {
+                // Skip until closing quote
+                let prefix = "stroke-opacity=\"";
+                for _ in 0..prefix.len() {
+                    chars.next();
+                }
+                let mut found_close = false;
+                while let Some(c) = chars.next() {
+                    if c == '"' {
+                        found_close = true;
+                        break;
+                    }
+                }
+                if !found_close {
+                    // Malformed, just append the space back
+                    result.push(' ');
+                    result.push_str("stroke-opacity=\"");
+                }
+                // Skip the attribute, don't append
+                continue;
+            }
+        }
+        result.push(ch);
+    }
+    result
+}
+
+fn should_emit_stroke_replicas(theme: Theme, tag: &str) -> bool {
+    matches!(theme, Theme::Watercolor | Theme::Sumi)
+        && matches!(tag, "path" | "text" | "rect" | "circle" | "ellipse" | "line" | "polyline")
+}
+
+fn emit_stroke_replicas(
+    main_element: &str,
+    _tag: &str,
+    options: &TransformOptions,
+    seed_state: &mut Option<u64>,
+) -> String {
+    let mut rng = next_rng(seed_state);
+    let mut result = String::new();
+
+    let replica_count = if matches!(options.theme, Theme::Watercolor) {
+        3
+    } else {
+        2
+    };
+
+    for i in 1..=replica_count - 1 {
+        let dx = (rng.gen::<f32>() - 0.5) * 1.5;
+        let dy = (rng.gen::<f32>() - 0.5) * 1.5;
+        let opacity = (0.5 - (i as f64 * 0.15)).max(0.1);
+
+        // Build replica by cloning the main element and modifying attributes
+        let replica = if main_element.contains(" />") {
+            // Self-closing element: <path ... />
+            let base = main_element.trim_end_matches(" />");
+            // Remove existing stroke-opacity to avoid duplication
+            let base_no_opacity = remove_stroke_opacity(base);
+            format!(
+                r#"{} transform="translate({:.2}, {:.2})" stroke-opacity="{:.2}" />"#,
+                base_no_opacity, dx, dy, opacity
+            )
+        } else {
+            // Should not happen for path, but handle gracefully
+            main_element.to_string()
+        };
+
+        result.push_str(&replica);
+    }
+
+    result
 }
 
 fn get_theme_filter_id(theme: Theme) -> &'static str {
