@@ -1,8 +1,9 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use std::fs;
 use std::path::Path;
 
 use blueprinter::jitter::JitterConfig;
+use blueprinter::render::{mermaid_to_svg, RenderError};
 use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, TransformOptions};
 
 #[derive(Parser)]
@@ -10,32 +11,78 @@ use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, Tran
 #[command(version)]
 #[command(about = "Hand-drawn style diagram renderer CLI")]
 #[command(
-    long_about = "Turn SVG into sketchy SVG. Mermaid, draw.io direct input, and raster export are planned."
+    long_about = "Turn SVG into sketchy SVG. Mermaid via mmdc and draw.io direct input are planned."
 )]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
+/// Styling options shared by `render` and `transform`.
+#[derive(Args)]
+struct StyleArgs {
+    /// Theme name (blueprint, sumi, watercolor, chalk, marker, manga, none)
+    #[arg(short, long, default_value = "blueprint")]
+    theme: String,
+
+    /// Seed for reproducible output
+    #[arg(long)]
+    seed: Option<u64>,
+
+    /// Override SVG text font-family while preserving layout
+    #[arg(long)]
+    font_family: Option<String>,
+
+    /// Maximum coordinate offset applied to jittered geometry
+    #[arg(long)]
+    jitter_amplitude: Option<f64>,
+
+    /// Segment density used to subdivide jittered strokes
+    #[arg(long)]
+    jitter_frequency: Option<f64>,
+
+    /// Relative stroke-width variation applied per shape
+    #[arg(long)]
+    jitter_stroke_width_var: Option<f64>,
+}
+
+/// Output options shared by `render` and `transform`.
+#[derive(Args)]
+struct OutputArgs {
+    /// Output file path
+    #[arg(short, long)]
+    output: String,
+
+    /// Output format (svg, png, webp). Inferred from output extension if omitted.
+    #[arg(long)]
+    format: Option<String>,
+
+    /// Scale factor for raster output (default: 1.0)
+    #[arg(long, default_value = "1.0")]
+    scale: f32,
+
+    /// Explicit output width (in pixels, for raster formats)
+    #[arg(long)]
+    width: Option<u32>,
+
+    /// Explicit output height (in pixels, for raster formats)
+    #[arg(long)]
+    height: Option<u32>,
+}
+
 #[derive(Subcommand)]
 enum Commands {
-    /// Render a diagram into hand-drawn style output (planned; not implemented yet)
+    /// Render a Mermaid diagram (via external `mmdc`) into hand-drawn output
     Render {
-        /// Input file path
+        /// Input Mermaid file path (.mmd / .mermaid)
         #[arg(short, long)]
         input: String,
 
-        /// Output file path
-        #[arg(short, long)]
-        output: String,
+        #[command(flatten)]
+        style: StyleArgs,
 
-        /// Theme name (blueprint, sumi, watercolor, chalk, marker, manga, none)
-        #[arg(short, long, default_value = "blueprint")]
-        theme: String,
-
-        /// Seed for reproducible output
-        #[arg(long)]
-        seed: Option<u64>,
+        #[command(flatten)]
+        output_args: OutputArgs,
     },
     /// Transform an existing SVG's appearance without changing layout
     Transform {
@@ -43,49 +90,11 @@ enum Commands {
         #[arg(short, long)]
         input: String,
 
-        /// Output file path
-        #[arg(short, long)]
-        output: String,
+        #[command(flatten)]
+        style: StyleArgs,
 
-        /// Theme name (blueprint, sumi, watercolor, chalk, marker, manga, none)
-        #[arg(short, long, default_value = "blueprint")]
-        theme: String,
-
-        /// Seed for reproducible output
-        #[arg(long)]
-        seed: Option<u64>,
-
-        /// Override SVG text font-family while preserving layout
-        #[arg(long)]
-        font_family: Option<String>,
-
-        /// Maximum coordinate offset applied to jittered geometry
-        #[arg(long)]
-        jitter_amplitude: Option<f64>,
-
-        /// Segment density used to subdivide jittered strokes
-        #[arg(long)]
-        jitter_frequency: Option<f64>,
-
-        /// Relative stroke-width variation applied per shape
-        #[arg(long)]
-        jitter_stroke_width_var: Option<f64>,
-
-        /// Output format (svg, png, webp). If not specified, inferred from output file extension
-        #[arg(long)]
-        format: Option<String>,
-
-        /// Scale factor for raster output (default: 1.0)
-        #[arg(long, default_value = "1.0")]
-        scale: f32,
-
-        /// Explicit output width (in pixels, for raster formats)
-        #[arg(long)]
-        width: Option<u32>,
-
-        /// Explicit output height (in pixels, for raster formats)
-        #[arg(long)]
-        height: Option<u32>,
+        #[command(flatten)]
+        output_args: OutputArgs,
     },
     /// Convert input to another format (planned; not implemented yet)
     Convert {
@@ -105,128 +114,125 @@ fn main() {
     match cli.command {
         Commands::Render {
             input,
-            output,
-            theme,
-            seed,
+            style,
+            output_args,
         } => {
-            eprintln!(
-                "Error: render is not implemented yet. Convert Mermaid/draw.io to SVG first, then use `transform`."
-            );
-            let _ = (input, output, theme, seed);
-            std::process::exit(1);
+            let mermaid = read_input(&input);
+            let svg = match mermaid_to_svg(&mermaid) {
+                Ok(svg) => svg,
+                Err(RenderError::MmdcNotFound) => {
+                    eprintln!("Error: {}", RenderError::MmdcNotFound);
+                    std::process::exit(127);
+                }
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(1);
+                }
+            };
+            run_pipeline(&svg, &input, &style, &output_args, "rendered");
         }
         Commands::Transform {
             input,
-            output,
-            theme,
-            seed,
-            font_family,
-            jitter_amplitude,
-            jitter_frequency,
-            jitter_stroke_width_var,
-            format,
-            scale,
-            width,
-            height,
+            style,
+            output_args,
         } => {
-            let svg = match fs::read_to_string(&input) {
-                Ok(svg) => svg,
-                Err(err) => {
-                    eprintln!("Error: failed to read input SVG: {err}");
-                    std::process::exit(1);
-                }
-            };
-            let theme_enum = match theme.as_str() {
-                "blueprint" => Theme::Blueprint,
-                "sumi" => Theme::Sumi,
-                "watercolor" => Theme::Watercolor,
-                "chalk" => Theme::Chalk,
-                "marker" => Theme::Marker,
-                "manga" => Theme::Manga,
-                "none" => Theme::None,
-                _ => {
-                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint`, `sumi`, `watercolor`, `chalk`, `marker`, `manga`, and `none` are supported.");
-                    std::process::exit(1);
-                }
-            };
-            let config = jitter_config_from_flags(
-                jitter_amplitude,
-                jitter_frequency,
-                jitter_stroke_width_var,
-            );
-            let options = TransformOptions {
-                seed,
-                font_family_override: font_family,
-                theme: theme_enum,
-            };
-            let transformed = match transform_svg(&svg, &config, &options) {
-                Ok(svg) => svg,
-                Err(err) => {
-                    eprintln!("Error: failed to transform SVG: {err}");
-                    std::process::exit(1);
-                }
-            };
-
-            // Determine output format
-            let output_format = format
-                .as_deref()
-                .unwrap_or_else(|| infer_format_from_path(&output));
-
-            match output_format {
-                "svg" => {
-                    if let Err(err) = fs::write(&output, &transformed) {
-                        eprintln!("Error: failed to write output SVG: {err}");
-                        std::process::exit(1);
-                    }
-                    println!("Transformed: {input} -> {output} (theme: {theme}, format: svg)");
-                }
-                "png" => {
-                    let dimensions = build_dimensions(width, height);
-                    match export_to_png(&transformed, dimensions, scale) {
-                        Ok(png_data) => {
-                            if let Err(err) = fs::write(&output, png_data) {
-                                eprintln!("Error: failed to write output PNG: {err}");
-                                std::process::exit(1);
-                            }
-                            println!(
-                                "Transformed: {input} -> {output} (theme: {theme}, format: png)"
-                            );
-                        }
-                        Err(err) => {
-                            eprintln!("Error: failed to export PNG: {err}");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                "webp" => {
-                    let dimensions = build_dimensions(width, height);
-                    match export_to_webp(&transformed, dimensions, scale) {
-                        Ok(webp_data) => {
-                            if let Err(err) = fs::write(&output, webp_data) {
-                                eprintln!("Error: failed to write output WebP: {err}");
-                                std::process::exit(1);
-                            }
-                            println!(
-                                "Transformed: {input} -> {output} (theme: {theme}, format: webp)"
-                            );
-                        }
-                        Err(err) => {
-                            eprintln!("Error: failed to export WebP: {err}");
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                _ => {
-                    eprintln!("Error: unknown format '{output_format}'. Supported formats are: svg, png, webp");
-                    std::process::exit(1);
-                }
-            }
+            let svg = read_input(&input);
+            run_pipeline(&svg, &input, &style, &output_args, "transformed");
         }
         Commands::Convert { input, output } => {
             eprintln!("Error: convert is not implemented yet.");
             let _ = (input, output);
             std::process::exit(1);
         }
+    }
+}
+
+fn read_input(path: &str) -> String {
+    match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(err) => {
+            eprintln!("Error: failed to read input '{path}': {err}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArgs, verb: &str) {
+    let theme_enum = match parse_theme(&style.theme) {
+        Some(t) => t,
+        None => {
+            eprintln!(
+                "Error: theme `{}` is not supported. Valid: blueprint, sumi, watercolor, chalk, marker, manga, none.",
+                style.theme
+            );
+            std::process::exit(1);
+        }
+    };
+    let config = jitter_config_from_flags(
+        style.jitter_amplitude,
+        style.jitter_frequency,
+        style.jitter_stroke_width_var,
+    );
+    let options = TransformOptions {
+        seed: style.seed,
+        font_family_override: style.font_family.clone(),
+        theme: theme_enum,
+    };
+    let transformed = match transform_svg(svg, &config, &options) {
+        Ok(svg) => svg,
+        Err(err) => {
+            eprintln!("Error: failed to transform SVG: {err}");
+            std::process::exit(1);
+        }
+    };
+
+    let output_format = out
+        .format
+        .as_deref()
+        .unwrap_or_else(|| infer_format_from_path(&out.output));
+
+    let result = match output_format {
+        "svg" => fs::write(&out.output, &transformed).map_err(|e| e.to_string()),
+        "png" => export_to_png(
+            &transformed,
+            build_dimensions(out.width, out.height),
+            out.scale,
+        )
+        .and_then(|bytes| fs::write(&out.output, bytes).map_err(|e| e.to_string())),
+        "webp" => export_to_webp(
+            &transformed,
+            build_dimensions(out.width, out.height),
+            out.scale,
+        )
+        .and_then(|bytes| fs::write(&out.output, bytes).map_err(|e| e.to_string())),
+        _ => {
+            eprintln!("Error: unknown format '{output_format}'. Supported: svg, png, webp.");
+            std::process::exit(1);
+        }
+    };
+
+    if let Err(err) = result {
+        eprintln!("Error: failed to write output {output_format}: {err}");
+        std::process::exit(1);
+    }
+
+    println!(
+        "{verb}: {input_label} -> {output} (theme: {theme}, format: {output_format})",
+        output = out.output,
+        theme = style.theme,
+    );
+}
+
+fn parse_theme(name: &str) -> Option<Theme> {
+    match name {
+        "blueprint" => Some(Theme::Blueprint),
+        "sumi" => Some(Theme::Sumi),
+        "watercolor" => Some(Theme::Watercolor),
+        "chalk" => Some(Theme::Chalk),
+        "marker" => Some(Theme::Marker),
+        "manga" => Some(Theme::Manga),
+        "none" => Some(Theme::None),
+        _ => None,
     }
 }
 
@@ -254,7 +260,7 @@ fn infer_format_from_path(path: &str) -> &'static str {
         Some("png") => "png",
         Some("webp") => "webp",
         Some("svg") => "svg",
-        _ => "svg", // default to SVG
+        _ => "svg",
     }
 }
 
@@ -271,35 +277,34 @@ fn build_dimensions(width: Option<u32>, height: Option<u32>) -> Option<(Option<u
 mod tests {
     use super::*;
 
+    fn assert_transform_command(cli: Cli) -> (StyleArgs, OutputArgs) {
+        match cli.command {
+            Commands::Transform {
+                style, output_args, ..
+            } => (style, output_args),
+            _ => panic!("expected transform command"),
+        }
+    }
+
     #[test]
     fn transform_cli_defaults_match_jitter_defaults() {
         let cli =
             Cli::try_parse_from(["blueprinter", "transform", "-i", "in.svg", "-o", "out.svg"])
                 .unwrap();
+        let (style, out) = assert_transform_command(cli);
 
-        let Commands::Transform {
-            jitter_amplitude,
-            jitter_frequency,
-            jitter_stroke_width_var,
-            font_family,
-            scale,
-            width,
-            height,
-            format,
-            ..
-        } = cli.command
-        else {
-            panic!("expected transform command");
-        };
-
-        assert_eq!(font_family, None);
-        assert_eq!(scale, 1.0);
-        assert_eq!(width, None);
-        assert_eq!(height, None);
-        assert_eq!(format, None);
+        assert_eq!(style.font_family, None);
+        assert_eq!(out.scale, 1.0);
+        assert_eq!(out.width, None);
+        assert_eq!(out.height, None);
+        assert_eq!(out.format, None);
 
         assert_eq!(
-            jitter_config_from_flags(jitter_amplitude, jitter_frequency, jitter_stroke_width_var),
+            jitter_config_from_flags(
+                style.jitter_amplitude,
+                style.jitter_frequency,
+                style.jitter_stroke_width_var
+            ),
             JitterConfig::default()
         );
     }
@@ -323,28 +328,62 @@ mod tests {
             "Virgil",
         ])
         .unwrap();
+        let (style, _) = assert_transform_command(cli);
 
-        let Commands::Transform {
-            jitter_amplitude,
-            jitter_frequency,
-            jitter_stroke_width_var,
-            font_family,
-            ..
-        } = cli.command
-        else {
-            panic!("expected transform command");
-        };
-
-        assert_eq!(font_family.as_deref(), Some("Virgil"));
-
+        assert_eq!(style.font_family.as_deref(), Some("Virgil"));
         assert_eq!(
-            jitter_config_from_flags(jitter_amplitude, jitter_frequency, jitter_stroke_width_var),
+            jitter_config_from_flags(
+                style.jitter_amplitude,
+                style.jitter_frequency,
+                style.jitter_stroke_width_var
+            ),
             JitterConfig {
                 amplitude: 3.5,
                 frequency: 7.0,
                 stroke_width_var: 0.4,
             }
         );
+    }
+
+    #[test]
+    fn render_cli_accepts_same_style_flags_as_transform() {
+        let cli = Cli::try_parse_from([
+            "blueprinter",
+            "render",
+            "-i",
+            "diagram.mmd",
+            "-o",
+            "out.png",
+            "--theme",
+            "manga",
+            "--seed",
+            "7",
+            "--width",
+            "800",
+        ])
+        .unwrap();
+
+        let Commands::Render {
+            input,
+            style,
+            output_args,
+        } = cli.command
+        else {
+            panic!("expected render command");
+        };
+
+        assert_eq!(input, "diagram.mmd");
+        assert_eq!(style.theme, "manga");
+        assert_eq!(style.seed, Some(7));
+        assert_eq!(output_args.width, Some(800));
+    }
+
+    #[test]
+    fn parse_theme_known_values() {
+        assert_eq!(parse_theme("manga"), Some(Theme::Manga));
+        assert_eq!(parse_theme("chalk"), Some(Theme::Chalk));
+        assert_eq!(parse_theme("none"), Some(Theme::None));
+        assert_eq!(parse_theme("nonsense"), None);
     }
 
     #[test]
