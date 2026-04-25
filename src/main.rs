@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use blueprinter::jitter::JitterConfig;
-use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, TransformOptions, Theme};
+use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, TransformOptions};
 
 #[derive(Parser)]
 #[command(name = "blueprinter")]
@@ -138,9 +138,11 @@ fn main() {
             };
             let theme_enum = match theme.as_str() {
                 "blueprint" => Theme::Blueprint,
+                "sumi" => Theme::Sumi,
+                "watercolor" => Theme::Watercolor,
                 "none" => Theme::None,
                 _ => {
-                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint` and `none` are supported.");
+                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint`, `sumi`, `watercolor`, and `none` are supported.");
                     std::process::exit(1);
                 }
             };
@@ -183,7 +185,9 @@ fn main() {
                                 eprintln!("Error: failed to write output PNG: {err}");
                                 std::process::exit(1);
                             }
-                            println!("Transformed: {input} -> {output} (theme: {theme}, format: png)");
+                            println!(
+                                "Transformed: {input} -> {output} (theme: {theme}, format: png)"
+                            );
                         }
                         Err(err) => {
                             eprintln!("Error: failed to export PNG: {err}");
@@ -199,7 +203,9 @@ fn main() {
                                 eprintln!("Error: failed to write output WebP: {err}");
                                 std::process::exit(1);
                             }
-                            println!("Transformed: {input} -> {output} (theme: {theme}, format: webp)");
+                            println!(
+                                "Transformed: {input} -> {output} (theme: {theme}, format: webp)"
+                            );
                         }
                         Err(err) => {
                             eprintln!("Error: failed to export WebP: {err}");

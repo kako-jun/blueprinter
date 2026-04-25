@@ -47,12 +47,39 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 
 ## Themes
 
-- `blueprint` — accepted today; full technical drawing styling is planned
-- `sumi` — planned Japanese ink wash painting
+- `blueprint` — accepted; full technical drawing styling with Gaussian blur
+- `sumi` — Japanese ink wash painting with grayscale ink bleed effect (now implemented)
+- `watercolor` — soft pigment bleeding and color mixing (now implemented)
 - `chalk` — planned white chalk on a blackboard
 - `marker` — planned bold neon marker strokes
-- `watercolor` — planned soft pigment bleeding
 - `manga` — planned screentone patterns and speed lines
+
+### Sumi Theme
+
+The sumi (墨) theme mimics traditional Japanese ink painting with grayscale strokes and a soft bleed effect.
+
+```bash
+blueprinter transform -i input.svg -o output.svg --theme sumi --seed 42
+```
+
+**Features:**
+- Grayscale color palette (black to light gray)
+- Gaussian blur filter with 2–4px standard deviation
+- Semi-transparent stroke opacity (0.6–1.0) for ink wash effect
+
+### Watercolor Theme
+
+The watercolor theme simulates soft pigment mixing and color bleeding with pastel colors.
+
+```bash
+blueprinter transform -i input.svg -o output.svg --theme watercolor --seed 42
+```
+
+**Features:**
+- Pastel color palette (#FFB3BA, #FFDFBA, #FFFFBA, #BAFFC9, #BAE1FF, #E0BBE4, #FFC7F5)
+- Gaussian blur filter with 4–8px standard deviation for diffuse bleed
+- Color matrix saturation adjustment (90%) for soft, washed appearance
+- Semi-transparent fills (0.5–0.9) for transparency effect
 
 ## Current Status
 
@@ -60,6 +87,8 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 - `transform` command: SVG → hand-drawn SVG transformation
 - PNG output: `--format png`, with `--scale`, `--width`, `--height` options
 - Blueprint theme: complete with stroke/fill styling and background
+- **Sumi theme**: ink wash effect with grayscale colors and blur filters
+- **Watercolor theme**: pastel color palette with diffuse bleed effect
 - Jitter controls: `--jitter-amplitude`, `--jitter-frequency`, `--jitter-stroke-width-var`
 - Text overrides: `--font-family` for font replacement
 - Reproducible output: `--seed` for deterministic jitter
@@ -67,7 +96,7 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 
 ### Planned
 - WebP output (currently PNG only)
-- Additional themes: `sumi` (ink wash), `chalk`, `marker`, `watercolor`, `manga`
+- Additional themes: `chalk`, `marker`, `manga`
 - Full theme styling for blueprint (currently basic)
 - Text outline conversion for advanced effects
 - `render` command (Mermaid/draw.io → SVG → hand-drawn SVG)

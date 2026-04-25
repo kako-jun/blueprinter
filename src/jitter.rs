@@ -151,7 +151,11 @@ fn jitter_primitive_path_with_rng<R: Rng + ?Sized>(
             })
         }
         Primitive::Circle {
-            cx, cy, r, stroke_width, ..
+            cx,
+            cy,
+            r,
+            stroke_width,
+            ..
         } => {
             let path_d = circle_to_path(*cx, *cy, *r);
             let d = jitter_path_d(&path_d, config, rng)?;
@@ -161,7 +165,12 @@ fn jitter_primitive_path_with_rng<R: Rng + ?Sized>(
             })
         }
         Primitive::Ellipse {
-            cx, cy, rx, ry, stroke_width, ..
+            cx,
+            cy,
+            rx,
+            ry,
+            stroke_width,
+            ..
         } => {
             let path_d = ellipse_to_path(*cx, *cy, *rx, *ry);
             let d = jitter_path_d(&path_d, config, rng)?;
@@ -171,7 +180,9 @@ fn jitter_primitive_path_with_rng<R: Rng + ?Sized>(
             })
         }
         Primitive::Polygon {
-            points, stroke_width, ..
+            points,
+            stroke_width,
+            ..
         } => {
             let path_d = polygon_to_path(points);
             let d = jitter_path_d(&path_d, config, rng)?;

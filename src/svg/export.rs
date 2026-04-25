@@ -11,8 +11,7 @@ pub fn export_to_png(
 
     let (width, height) = calculate_dimensions(&tree, dimensions, scale)?;
 
-    let mut pixmap =
-        tiny_skia::Pixmap::new(width, height).ok_or("Failed to create pixmap")?;
+    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or("Failed to create pixmap")?;
 
     let render_ts = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, render_ts, &mut pixmap.as_mut());
@@ -32,8 +31,7 @@ pub fn export_to_webp(
 
     let (width, height) = calculate_dimensions(&tree, dimensions, scale)?;
 
-    let mut pixmap =
-        tiny_skia::Pixmap::new(width, height).ok_or("Failed to create pixmap")?;
+    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or("Failed to create pixmap")?;
 
     let render_ts = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, render_ts, &mut pixmap.as_mut());
@@ -55,27 +53,25 @@ fn calculate_dimensions(
     let (width, height) = match dimensions {
         // Both width and height specified
         Some((Some(w), Some(h))) => (w, h),
-        
+
         // Width only specified → preserve aspect ratio, calculate height
         Some((Some(w), None)) => {
             let h = (w as f32 / svg_aspect_ratio) as u32;
             (w, h)
-        },
-        
+        }
+
         // Height only specified → preserve aspect ratio, calculate width
         Some((None, Some(h))) => {
             let w = (h as f32 * svg_aspect_ratio) as u32;
             (w, h)
-        },
-        
+        }
+
         // Neither specified → apply scale
-        None => {
-            (
-                (svg_size.width() * scale) as u32,
-                (svg_size.height() * scale) as u32,
-            )
-        },
-        
+        None => (
+            (svg_size.width() * scale) as u32,
+            (svg_size.height() * scale) as u32,
+        ),
+
         // This case is impossible (type system ensures it)
         Some((None, None)) => unreachable!(),
     };
