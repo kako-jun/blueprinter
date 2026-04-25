@@ -60,8 +60,8 @@
 
 - [ ] Mermaid 入力対応（mmdc 外部コマンド呼び出し）
 - [ ] md 一括変換モード
-- [ ] PNG 出力（resvg 導入）
-- [ ] WebP 出力
+- [x] PNG 出力（resvg 導入、#11 完了）— `--format png`, `--scale`, `--width`, `--height` 対応
+- [~] WebP 出力（スタブ実装のみ、要 webp クレート追加）
 
 ### Phase 6: 追加テーマ・図形（#13, #14）
 
