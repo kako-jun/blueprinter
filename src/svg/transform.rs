@@ -4,6 +4,7 @@ use roxmltree::{Document, Node};
 
 use crate::jitter::{jitter_primitive_path_with_seed, JitterConfig, JitteredPath};
 use crate::svg::primitive::Primitive;
+use crate::svg::theme::theme_style;
 
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
@@ -149,6 +150,7 @@ fn serialize_jittered_path(
     out.push_str(&format_attr("d", &path.d));
 
     let mut rng = next_rng(seed_state);
+    let style = theme_style(options.theme);
 
     for attr in source.attributes() {
         if path.stroke_width.is_some() && attr.name() == "stroke-width" {
@@ -157,21 +159,9 @@ fn serialize_jittered_path(
         if !is_geometry_attr(source_tag, attr.name()) {
             let attr_name = qualified_attr_name(source, &attr);
             let attr_value = match attr.name() {
-                "stroke" => match options.theme {
-                    Theme::Watercolor => crate::svg::watercolor::apply_watercolor_stroke(&mut rng),
-                    Theme::Chalk => crate::svg::chalk::apply_chalk_stroke(&mut rng),
-                    Theme::Sumi => apply_theme_stroke(options.theme, attr.value()),
-                    _ => apply_theme_stroke(options.theme, attr.value()),
-                },
-                "fill" => match options.theme {
-                    Theme::Watercolor => crate::svg::watercolor::apply_watercolor_fill(
-                        attr.value(),
-                        source_tag,
-                        &mut rng,
-                    ),
-                    _ => apply_theme_fill(options.theme, attr.value(), source_tag),
-                },
-                "style" => apply_theme_to_style(options.theme, attr.value(), source_tag),
+                "stroke" => style.stroke_random(attr.value(), &mut rng),
+                "fill" => style.fill_random(attr.value(), source_tag, &mut rng),
+                "style" => style.style(attr.value(), source_tag),
                 _ => attr.value().to_string(),
             };
             out.push_str(&format_attr(&attr_name, &attr_value));
@@ -181,43 +171,23 @@ fn serialize_jittered_path(
         out.push_str(&format_attr("stroke-width", &format!("{stroke_width:.3}")));
     }
 
-    // Add stroke-opacity for theme-based opacity randomization
-    match options.theme {
-        Theme::Sumi => {
-            let opacity = crate::svg::sumi::sumi_random_opacity(&mut rng);
-            out.push_str(&format_attr("stroke-opacity", &format!("{opacity:.3}")));
-        }
-        Theme::Watercolor => {
-            let opacity = crate::svg::watercolor::watercolor_random_opacity(&mut rng);
-            out.push_str(&format_attr("stroke-opacity", &format!("{opacity:.3}")));
-        }
-        Theme::Chalk => {
-            let opacity = crate::svg::chalk::chalk_random_opacity(&mut rng);
-            out.push_str(&format_attr("stroke-opacity", &format!("{opacity:.3}")));
-        }
-        _ => {}
+    if let Some(opacity) = style.stroke_opacity(&mut rng) {
+        out.push_str(&format_attr("stroke-opacity", &format!("{opacity:.3}")));
     }
 
-    // Add default stroke for themes that need a guaranteed stroke color
     let has_stroke = source.attribute("stroke").is_some() || source.attribute("style").is_some();
     if !has_stroke {
-        match options.theme {
-            Theme::Blueprint => out.push_str(&format_attr("stroke", "#e8e8e8")),
-            Theme::Chalk => out.push_str(&format_attr(
-                "stroke",
-                &crate::svg::chalk::apply_chalk_stroke(&mut rng),
-            )),
-            _ => {}
+        if let Some(stroke) = style.default_stroke_random(&mut rng) {
+            out.push_str(&format_attr("stroke", &stroke));
         }
     }
 
-    let filter_id = get_theme_filter_id(options.theme);
-    out.push_str(&format!(r#" filter="url(#{})""#, filter_id));
+    out.push_str(&format!(r#" filter="url(#{})""#, style.filter_id()));
     out.push_str(" />");
 
-    // Add stroke replicas for watercolor/sumi themes
-    if should_emit_stroke_replicas(options.theme, source_tag) {
-        let replicas = emit_stroke_replicas(&out, source_tag, options, seed_state);
+    let extra = style.extra_replicas(source_tag);
+    if extra > 0 {
+        let replicas = emit_stroke_replicas(&out, extra, seed_state);
         out.push_str(&replicas);
     }
 
@@ -245,6 +215,7 @@ fn serialize_original_element(
             None => out.push_str(&format_attr("xmlns", namespace.uri())),
         }
     }
+    let style = theme_style(options.theme);
     if should_jitter_text(&node) {
         serialize_text_attrs(node, config, options, seed_state, &mut out);
     } else {
@@ -254,23 +225,17 @@ fn serialize_original_element(
             let attr_value = match attr.name() {
                 "stroke" => {
                     has_stroke = true;
-                    apply_theme_stroke(options.theme, attr.value())
+                    style.stroke_static(attr.value())
                 }
-                "fill" => apply_theme_fill(options.theme, attr.value(), &tag),
-                "style" => apply_theme_to_style(options.theme, attr.value(), &tag),
+                "fill" => style.fill_static(attr.value(), &tag),
+                "style" => style.style(attr.value(), &tag),
                 _ => attr.value().to_string(),
             };
             out.push_str(&format_attr(&attr_name, &attr_value));
         }
-        // Add default stroke for themes that need a guaranteed stroke color
         if !has_stroke {
-            match options.theme {
-                Theme::Blueprint => out.push_str(&format_attr("stroke", "#e8e8e8")),
-                Theme::Chalk => out.push_str(&format_attr(
-                    "stroke",
-                    crate::svg::chalk::CHALK_DEFAULT_STROKE,
-                )),
-                _ => {}
+            if let Some(stroke) = style.default_stroke_static() {
+                out.push_str(&format_attr("stroke", &stroke));
             }
         }
     }
@@ -286,18 +251,10 @@ fn serialize_original_element(
         if !has_defs_child(&node) {
             insert_svg_defs(&mut out, seed_state.unwrap_or(42), options.theme);
         }
-        match options.theme {
-            Theme::Blueprint => {
-                if let Some(bg) = theme_background(&node, "#1a3a5c") {
-                    out.push_str(&bg);
-                }
+        if let Some(color) = style.background() {
+            if let Some(bg) = theme_background(&node, color) {
+                out.push_str(&bg);
             }
-            Theme::Chalk => {
-                if let Some(bg) = theme_background(&node, crate::svg::chalk::CHALK_BACKGROUND) {
-                    out.push_str(&bg);
-                }
-            }
-            _ => {}
         }
     }
     if tag == "text" {
@@ -402,71 +359,22 @@ fn has_defs_child(node: &Node<'_, '_>) -> bool {
 }
 
 fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
-    let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#;
-    let text_grunge = text_grunge.replace("{seed}", &seed.to_string());
+    let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#
+        .replace("{seed}", &seed.to_string());
 
     let subtle_bleed = r#"<filter id="subtle-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur in="SourceGraphic" stdDeviation="3.0" result="blurred1"/><feOffset in="blurred1" dx="1.0" dy="1.0" result="offset1"/><feGaussianBlur in="offset1" stdDeviation="1.5" result="blurred2"/><feComponentTransfer in="blurred2" result="faded"><feFuncA type="linear" slope="0.4"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="darken"/></filter>"#;
 
-    match theme {
-        Theme::Blueprint => format!("{}{}", text_grunge, subtle_bleed),
-        Theme::Sumi => {
-            let sumi_filter = crate::svg::sumi::sumi_filter_defs(seed);
-            format!("{}{}{}", text_grunge, subtle_bleed, sumi_filter)
-        }
-        Theme::Watercolor => {
-            let watercolor_filter = crate::svg::watercolor::watercolor_filter_defs(seed);
-            format!("{}{}{}", text_grunge, subtle_bleed, watercolor_filter)
-        }
-        Theme::Chalk => {
-            let chalk_filter = crate::svg::chalk::chalk_filter_defs(seed);
-            format!("{}{}{}", text_grunge, subtle_bleed, chalk_filter)
-        }
-        Theme::None => format!("{}{}", text_grunge, subtle_bleed),
+    let mut out = format!("{text_grunge}{subtle_bleed}");
+    if let Some(extra) = theme_style(theme).filter_defs(seed) {
+        out.push_str(&extra);
     }
+    out
 }
 
 fn insert_svg_defs(out: &mut String, seed: u64, theme: Theme) {
     out.push_str(r#"<defs>"#);
     out.push_str(&bp_filter_defs_content(seed, theme));
     out.push_str(r#"</defs>"#);
-}
-
-fn apply_theme_stroke(theme: Theme, stroke: &str) -> String {
-    match theme {
-        Theme::Blueprint => "#e8e8e8".to_string(),
-        Theme::Sumi => crate::svg::sumi::apply_sumi_stroke(stroke),
-        Theme::Watercolor => {
-            // Watercolor stroke colors require randomization, but we can't access RNG here
-            // For now, use a fixed pastel color
-            "#FFB3BA".to_string()
-        }
-        Theme::Chalk => crate::svg::chalk::CHALK_DEFAULT_STROKE.to_string(),
-        Theme::None => stroke.to_string(),
-    }
-}
-
-fn apply_theme_fill(theme: Theme, fill: &str, tag: &str) -> String {
-    match theme {
-        Theme::Blueprint => {
-            // For blueprint theme, closed shapes (rect, circle, etc) have no fill
-            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
-                "none".to_string()
-            } else {
-                fill.to_string()
-            }
-        }
-        Theme::Sumi => crate::svg::sumi::apply_sumi_fill(fill, tag),
-        Theme::Watercolor => {
-            // For watercolor theme, use lighter colors with transparency
-            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
-                "#FFB3BACC".to_string() // Soft red with alpha
-            } else {
-                fill.to_string()
-            }
-        }
-        Theme::Chalk => crate::svg::chalk::apply_chalk_fill(fill, tag),
-        Theme::None => fill.to_string(),
-    }
 }
 
 fn remove_stroke_opacity(s: &str) -> String {
@@ -504,46 +412,23 @@ fn remove_stroke_opacity(s: &str) -> String {
     result
 }
 
-fn should_emit_stroke_replicas(theme: Theme, tag: &str) -> bool {
-    matches!(theme, Theme::Watercolor | Theme::Sumi | Theme::Chalk)
-        && matches!(
-            tag,
-            "path" | "text" | "rect" | "circle" | "ellipse" | "line" | "polyline"
-        )
-}
-
-fn emit_stroke_replicas(
-    main_element: &str,
-    _tag: &str,
-    options: &TransformOptions,
-    seed_state: &mut Option<u64>,
-) -> String {
+fn emit_stroke_replicas(main_element: &str, extra: usize, seed_state: &mut Option<u64>) -> String {
     let mut rng = next_rng(seed_state);
     let mut result = String::new();
 
-    let replica_count = if matches!(options.theme, Theme::Watercolor) {
-        3
-    } else {
-        2
-    };
-
-    for i in 1..=replica_count - 1 {
+    for i in 1..=extra {
         let dx = (rng.gen::<f32>() - 0.5) * 1.5;
         let dy = (rng.gen::<f32>() - 0.5) * 1.5;
         let opacity = (0.5 - (i as f64 * 0.15)).max(0.1);
 
-        // Build replica by cloning the main element and modifying attributes
         let replica = if main_element.contains(" />") {
-            // Self-closing element: <path ... />
             let base = main_element.trim_end_matches(" />");
-            // Remove existing stroke-opacity to avoid duplication
             let base_no_opacity = remove_stroke_opacity(base);
             format!(
                 r#"{} transform="translate({:.2}, {:.2})" stroke-opacity="{:.2}" />"#,
                 base_no_opacity, dx, dy, opacity
             )
         } else {
-            // Should not happen for path, but handle gracefully
             main_element.to_string()
         };
 
@@ -551,167 +436,6 @@ fn emit_stroke_replicas(
     }
 
     result
-}
-
-fn get_theme_filter_id(theme: Theme) -> &'static str {
-    match theme {
-        Theme::Sumi => "sumi-ink-bleed",
-        Theme::Watercolor => "watercolor-bleed",
-        Theme::Chalk => "chalk-dust",
-        Theme::Blueprint => "subtle-bleed",
-        Theme::None => "subtle-bleed",
-    }
-}
-
-fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
-    match theme {
-        Theme::Blueprint => {
-            let mut result = String::new();
-            for part in style.split(';') {
-                let trimmed = part.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Some((key, value)) = trimmed.split_once(':') {
-                    let key = key.trim();
-                    let value = value.trim();
-                    match key {
-                        "stroke" => {
-                            result.push_str("stroke:#e8e8e8;");
-                        }
-                        "fill" => {
-                            // For blueprint theme, closed shapes have no fill
-                            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
-                                result.push_str("fill:none;");
-                            } else {
-                                result.push_str(&format!("{}:{};", key, value));
-                            }
-                        }
-                        _ => {
-                            result.push_str(&format!("{}:{};", key, value));
-                        }
-                    }
-                } else {
-                    result.push_str(trimmed);
-                    result.push(';');
-                }
-            }
-            // Remove trailing semicolon if present
-            if result.ends_with(';') {
-                result.pop();
-            }
-            result
-        }
-        Theme::Sumi => {
-            let mut result = String::new();
-            for part in style.split(';') {
-                let trimmed = part.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Some((key, value)) = trimmed.split_once(':') {
-                    let key = key.trim();
-                    let value = value.trim();
-                    match key {
-                        "stroke" => {
-                            result.push_str("stroke:rgba(50, 50, 50, 0.8);");
-                        }
-                        "fill" => {
-                            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
-                                result.push_str("fill:none;");
-                            } else {
-                                result.push_str(&format!("{}:{};", key, value));
-                            }
-                        }
-                        _ => {
-                            result.push_str(&format!("{}:{};", key, value));
-                        }
-                    }
-                } else {
-                    result.push_str(trimmed);
-                    result.push(';');
-                }
-            }
-            if result.ends_with(';') {
-                result.pop();
-            }
-            result
-        }
-        Theme::Watercolor => {
-            let mut result = String::new();
-            for part in style.split(';') {
-                let trimmed = part.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Some((key, value)) = trimmed.split_once(':') {
-                    let key = key.trim();
-                    let value = value.trim();
-                    match key {
-                        "stroke" => {
-                            result.push_str("stroke:#FFB3BA;");
-                        }
-                        "fill" => {
-                            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
-                                result.push_str("fill:#FFB3BACC;");
-                            } else {
-                                result.push_str(&format!("{}:{};", key, value));
-                            }
-                        }
-                        _ => {
-                            result.push_str(&format!("{}:{};", key, value));
-                        }
-                    }
-                } else {
-                    result.push_str(trimmed);
-                    result.push(';');
-                }
-            }
-            if result.ends_with(';') {
-                result.pop();
-            }
-            result
-        }
-        Theme::Chalk => {
-            let mut result = String::new();
-            for part in style.split(';') {
-                let trimmed = part.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                if let Some((key, value)) = trimmed.split_once(':') {
-                    let key = key.trim();
-                    let value = value.trim();
-                    match key {
-                        "stroke" => {
-                            result.push_str(&format!(
-                                "stroke:{};",
-                                crate::svg::chalk::CHALK_DEFAULT_STROKE
-                            ));
-                        }
-                        "fill" => {
-                            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
-                                result.push_str("fill:none;");
-                            } else {
-                                result.push_str(&format!("{}:{};", key, value));
-                            }
-                        }
-                        _ => {
-                            result.push_str(&format!("{}:{};", key, value));
-                        }
-                    }
-                } else {
-                    result.push_str(trimmed);
-                    result.push(';');
-                }
-            }
-            if result.ends_with(';') {
-                result.pop();
-            }
-            result
-        }
-        Theme::None => style.to_string(),
-    }
 }
 
 fn theme_background(svg_node: &Node<'_, '_>, color: &str) -> Option<String> {

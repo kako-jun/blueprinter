@@ -1,5 +1,46 @@
 /// Sumi (墨) theme implementation — ink bleed effect.
-use rand::Rng;
+use rand::{Rng, RngCore};
+
+use crate::svg::theme::{is_closed_shape, rewrite_style, ThemeStyle};
+
+const SUMI_STROKE: &str = "rgba(50, 50, 50, 0.8)";
+
+pub struct SumiStyle;
+
+impl ThemeStyle for SumiStyle {
+    fn stroke_static(&self, _original: &str) -> String {
+        SUMI_STROKE.to_string()
+    }
+    fn fill_static(&self, original: &str, tag: &str) -> String {
+        if is_closed_shape(tag) {
+            "none".to_string()
+        } else {
+            original.to_string()
+        }
+    }
+    fn style(&self, style: &str, tag: &str) -> String {
+        rewrite_style(style, tag, SUMI_STROKE, "none")
+    }
+    fn stroke_opacity(&self, rng: &mut dyn RngCore) -> Option<f64> {
+        Some(sumi_random_opacity(rng))
+    }
+    fn filter_id(&self) -> &'static str {
+        "sumi-ink-bleed"
+    }
+    fn filter_defs(&self, seed: u64) -> Option<String> {
+        Some(sumi_filter_defs(seed))
+    }
+    fn extra_replicas(&self, tag: &str) -> usize {
+        if matches!(
+            tag,
+            "path" | "text" | "rect" | "circle" | "ellipse" | "line" | "polyline"
+        ) {
+            1
+        } else {
+            0
+        }
+    }
+}
 
 /// Applies sumi theme to a stroke color.
 /// Sumi uses grayscale colors ranging from black to light gray.

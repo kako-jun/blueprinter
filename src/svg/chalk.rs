@@ -1,34 +1,67 @@
 /// Chalk theme implementation — chalkboard with dusty chalk strokes.
-use rand::Rng;
+use rand::{Rng, RngCore};
 
-/// Chalk palette — white-dominated with pale color chalks.
-/// White is repeated to bias selection, mimicking a classroom chalk tray.
-const CHALK_PALETTE: &[&str] = &[
-    "#f5f5f5", // white
-    "#f5f5f5", // white
-    "#f5f5f5", // white
-    "#f5f5f5", // white
-    "#f5f5f5", // white
-    "#f5f5f5", // white
-    "#fff5b8", // pale yellow
-    "#ffd0d0", // pale pink
-    "#cfe7ff", // pale blue
-    "#d8ffd0", // pale green
-];
+use crate::svg::theme::{rewrite_style, ThemeStyle};
 
-/// Chalkboard background color — dark slate green.
-pub const CHALK_BACKGROUND: &str = "#1f2a25";
+pub struct ChalkStyle;
 
-/// Default chalk stroke color when a stroke is added because the source had none.
-pub const CHALK_DEFAULT_STROKE: &str = "#f5f5f5";
-
-/// Selects a chalk color from the palette, biased toward white.
-pub fn apply_chalk_stroke<R: Rng + ?Sized>(rng: &mut R) -> String {
-    let idx = rng.gen::<usize>() % CHALK_PALETTE.len();
-    CHALK_PALETTE[idx].to_string()
+impl ThemeStyle for ChalkStyle {
+    fn stroke_random(&self, _original: &str, rng: &mut dyn RngCore) -> String {
+        apply_chalk_stroke(rng).to_string()
+    }
+    fn stroke_static(&self, _original: &str) -> String {
+        CHALK_DEFAULT_STROKE.to_string()
+    }
+    fn fill_static(&self, original: &str, tag: &str) -> String {
+        apply_chalk_fill(original, tag)
+    }
+    fn style(&self, style: &str, tag: &str) -> String {
+        rewrite_style(style, tag, CHALK_DEFAULT_STROKE, "none")
+    }
+    fn stroke_opacity(&self, rng: &mut dyn RngCore) -> Option<f64> {
+        Some(chalk_random_opacity(rng))
+    }
+    fn default_stroke_random(&self, rng: &mut dyn RngCore) -> Option<String> {
+        Some(apply_chalk_stroke(rng).to_string())
+    }
+    fn default_stroke_static(&self) -> Option<String> {
+        Some(CHALK_DEFAULT_STROKE.to_string())
+    }
+    fn filter_id(&self) -> &'static str {
+        "chalk-dust"
+    }
+    fn filter_defs(&self, seed: u64) -> Option<String> {
+        Some(chalk_filter_defs(seed))
+    }
+    fn background(&self) -> Option<&'static str> {
+        Some(CHALK_BACKGROUND)
+    }
+    fn extra_replicas(&self, tag: &str) -> usize {
+        if matches!(
+            tag,
+            "path" | "text" | "rect" | "circle" | "ellipse" | "line" | "polyline"
+        ) {
+            1
+        } else {
+            0
+        }
+    }
 }
 
-/// Closed shapes get no fill; chalk is a line medium.
+/// White is repeated to bias selection — most chalks are plain white,
+/// with the occasional pale-color stick.
+const CHALK_PALETTE: &[&str] = &[
+    "#f5f5f5", "#f5f5f5", "#f5f5f5", "#f5f5f5", "#f5f5f5", "#f5f5f5", "#fff5b8", "#ffd0d0",
+    "#cfe7ff", "#d8ffd0",
+];
+
+pub const CHALK_BACKGROUND: &str = "#1f2a25";
+pub const CHALK_DEFAULT_STROKE: &str = "#f5f5f5";
+
+pub fn apply_chalk_stroke<R: Rng + ?Sized>(rng: &mut R) -> &'static str {
+    CHALK_PALETTE[rng.gen_range(0..CHALK_PALETTE.len())]
+}
+
 pub fn apply_chalk_fill(fill: &str, tag: &str) -> String {
     if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
         "none".to_string()
@@ -37,7 +70,6 @@ pub fn apply_chalk_fill(fill: &str, tag: &str) -> String {
     }
 }
 
-/// Chalk strokes vary in opacity to mimic uneven pressure and dust.
 pub fn chalk_random_opacity<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     let base = 0.7;
     let variance = rng.gen::<f64>() * 0.25;
@@ -62,7 +94,7 @@ mod tests {
     fn chalk_stroke_returns_palette_color() {
         let mut rng = StdRng::seed_from_u64(42);
         let stroke = apply_chalk_stroke(&mut rng);
-        assert!(CHALK_PALETTE.contains(&stroke.as_str()));
+        assert!(CHALK_PALETTE.contains(&stroke));
     }
 
     #[test]
@@ -100,11 +132,15 @@ mod tests {
     }
 
     #[test]
-    fn chalk_palette_white_is_majority() {
-        let white_count = CHALK_PALETTE.iter().filter(|c| **c == "#f5f5f5").count();
+    fn chalk_stroke_picks_white_more_than_half_the_time() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let samples = 1000;
+        let white_picks = (0..samples)
+            .filter(|_| apply_chalk_stroke(&mut rng) == "#f5f5f5")
+            .count();
         assert!(
-            white_count * 2 > CHALK_PALETTE.len(),
-            "white should dominate the chalk palette"
+            white_picks * 2 > samples,
+            "white should dominate: got {white_picks}/{samples}"
         );
     }
 }

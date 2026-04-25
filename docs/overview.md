@@ -5,8 +5,8 @@ Last updated: 2026-04-25
 ## What is blueprinter?
 
 **blueprinter** is a CLI tool for turning SVG diagrams into a hand-drawn, sketchy style.
-Today it accepts arbitrary SVG as input and produces stylized SVG output.
-Mermaid definitions, draw.io direct input, PNG, and WebP are planned follow-up phases.
+Today it accepts arbitrary SVG as input and produces stylized SVG or PNG output.
+Mermaid definitions, draw.io direct input, and WebP are planned follow-up phases.
 
 The core idea: **do not recompute layout**. Instead, take an already-laid-out SVG
 and transform its visual appearance — strokes, fills, and filters — to mimic
@@ -83,7 +83,7 @@ Input SVG
 Intermediate SVG
     │
     ▼
-[ Rasterizer (resvg, planned) ]  ──optional──►  PNG / WebP
+[ Rasterizer (resvg) ]  ──optional──►  PNG (WebP planned)
     │
     ▼
 Output SVG
@@ -91,14 +91,14 @@ Output SVG
 
 ## Themes
 
-| Theme | Description |
-|---|---|
-| `blueprint` | Accepted by the CLI today; full palette/grid styling is planned. |
-| `sumi` | Planned. Japanese ink wash painting on washi paper. |
-| `chalk` | Planned. White chalk on a blackboard. |
-| `marker` | Planned. Bold neon marker strokes on dark background. |
-| `watercolor` | Planned. Soft pigment bleeding and paper grain. |
-| `manga` | Planned. Screentone patterns and speed lines. |
+| Theme | Status | Description |
+|---|---|---|
+| `blueprint` | Implemented | Technical-drawing aesthetic: dark blue background with light line strokes. |
+| `sumi` | Implemented | Japanese ink wash painting with grayscale strokes and Gaussian bleed. |
+| `watercolor` | Implemented | Soft pastel palette, color-mixing bleed, and stroke replicas for diffuse pigment. |
+| `chalk` | Implemented | White (and pale color) chalk on a slate-green chalkboard, with a turbulence-driven dust filter that breaks each stroke up. |
+| `marker` | Planned | Bold neon marker strokes on dark background. |
+| `manga` | Planned | Screentone patterns and speed lines. |
 
 ## Technology Stack
 

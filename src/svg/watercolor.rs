@@ -1,5 +1,50 @@
 /// Watercolor theme implementation — color bleed and mixing effect.
-use rand::Rng;
+use rand::{Rng, RngCore};
+
+use crate::svg::theme::{rewrite_style, ThemeStyle};
+
+pub struct WatercolorStyle;
+
+impl ThemeStyle for WatercolorStyle {
+    fn stroke_random(&self, _original: &str, rng: &mut dyn RngCore) -> String {
+        apply_watercolor_stroke(rng)
+    }
+    fn stroke_static(&self, _original: &str) -> String {
+        "#FFB3BA".to_string()
+    }
+    fn fill_random(&self, original: &str, tag: &str, rng: &mut dyn RngCore) -> String {
+        apply_watercolor_fill(original, tag, rng)
+    }
+    fn fill_static(&self, original: &str, tag: &str) -> String {
+        if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
+            "#FFB3BACC".to_string()
+        } else {
+            original.to_string()
+        }
+    }
+    fn style(&self, style: &str, tag: &str) -> String {
+        rewrite_style(style, tag, "#FFB3BA", "#FFB3BACC")
+    }
+    fn stroke_opacity(&self, rng: &mut dyn RngCore) -> Option<f64> {
+        Some(watercolor_random_opacity(rng))
+    }
+    fn filter_id(&self) -> &'static str {
+        "watercolor-bleed"
+    }
+    fn filter_defs(&self, seed: u64) -> Option<String> {
+        Some(watercolor_filter_defs(seed))
+    }
+    fn extra_replicas(&self, tag: &str) -> usize {
+        if matches!(
+            tag,
+            "path" | "text" | "rect" | "circle" | "ellipse" | "line" | "polyline"
+        ) {
+            2
+        } else {
+            0
+        }
+    }
+}
 
 /// Watercolor color palette — soft pastel colors
 const WATERCOLOR_PALETTE: &[&str] = &[
