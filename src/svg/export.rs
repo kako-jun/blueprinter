@@ -3,7 +3,7 @@ use resvg::{tiny_skia, usvg};
 
 pub fn export_to_png(
     svg: &str,
-    dimensions: Option<(u32, u32)>,
+    dimensions: Option<(Option<u32>, Option<u32>)>,
     scale: f32,
 ) -> Result<Vec<u8>, String> {
     let tree = usvg::Tree::from_str(svg, &usvg::Options::default())
@@ -24,7 +24,7 @@ pub fn export_to_png(
 
 pub fn export_to_webp(
     svg: &str,
-    dimensions: Option<(u32, u32)>,
+    dimensions: Option<(Option<u32>, Option<u32>)>,
     scale: f32,
 ) -> Result<Vec<u8>, String> {
     let tree = usvg::Tree::from_str(svg, &usvg::Options::default())
@@ -46,17 +46,38 @@ pub fn export_to_webp(
 
 fn calculate_dimensions(
     tree: &usvg::Tree,
-    dimensions: Option<(u32, u32)>,
+    dimensions: Option<(Option<u32>, Option<u32>)>,
     scale: f32,
 ) -> Result<(u32, u32), String> {
-    let (width, height) = if let Some((w, h)) = dimensions {
-        (w, h)
-    } else {
-        let root_size = tree.size();
-        (
-            (root_size.width() * scale) as u32,
-            (root_size.height() * scale) as u32,
-        )
+    let svg_size = tree.size();
+    let svg_aspect_ratio = svg_size.width() / svg_size.height();
+
+    let (width, height) = match dimensions {
+        // Both width and height specified
+        Some((Some(w), Some(h))) => (w, h),
+        
+        // Width only specified → preserve aspect ratio, calculate height
+        Some((Some(w), None)) => {
+            let h = (w as f32 / svg_aspect_ratio) as u32;
+            (w, h)
+        },
+        
+        // Height only specified → preserve aspect ratio, calculate width
+        Some((None, Some(h))) => {
+            let w = (h as f32 * svg_aspect_ratio) as u32;
+            (w, h)
+        },
+        
+        // Neither specified → apply scale
+        None => {
+            (
+                (svg_size.width() * scale) as u32,
+                (svg_size.height() * scale) as u32,
+            )
+        },
+        
+        // This case is impossible (type system ensures it)
+        Some((None, None)) => unreachable!(),
     };
 
     if width == 0 || height == 0 {
@@ -95,13 +116,35 @@ mod tests {
     }
 
     #[test]
-    fn test_export_to_png_with_explicit_dimensions() {
+    fn test_export_to_png_with_both_dimensions() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
             <line x1="0" y1="0" x2="100" y2="100" stroke="black"/>
         </svg>"#;
 
-        let result = export_to_png(svg, Some((200, 200)), 1.0);
+        let result = export_to_png(svg, Some((Some(200), Some(200))), 1.0);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_export_to_png_with_width_only() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+            <rect x="10" y="10" width="80" height="80" fill="blue"/>
+        </svg>"#;
+
+        let result = export_to_png(svg, Some((Some(200), None)), 1.0);
+        assert!(result.is_ok());
+        // Aspect ratio should be preserved (200 x 200 for square SVG)
+    }
+
+    #[test]
+    fn test_export_to_png_with_height_only() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+            <rect x="10" y="10" width="180" height="80" fill="green"/>
+        </svg>"#;
+
+        let result = export_to_png(svg, Some((None, Some(100))), 1.0);
+        assert!(result.is_ok());
+        // Aspect ratio should be preserved (200 x 100 for 2:1 SVG)
     }
 
     #[test]

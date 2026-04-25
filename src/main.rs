@@ -249,10 +249,12 @@ fn infer_format_from_path(path: &str) -> &'static str {
     }
 }
 
-fn build_dimensions(width: Option<u32>, height: Option<u32>) -> Option<(u32, u32)> {
+fn build_dimensions(width: Option<u32>, height: Option<u32>) -> Option<(Option<u32>, Option<u32>)> {
     match (width, height) {
-        (Some(w), Some(h)) => Some((w, h)),
-        _ => None,
+        (None, None) => None,
+        (Some(w), Some(h)) => Some((Some(w), Some(h))),
+        (Some(w), None) => Some((Some(w), None)),
+        (None, Some(h)) => Some((None, Some(h))),
     }
 }
 
@@ -358,13 +360,24 @@ mod tests {
 
     #[test]
     fn build_dimensions_both() {
-        assert_eq!(build_dimensions(Some(100), Some(200)), Some((100, 200)));
+        assert_eq!(
+            build_dimensions(Some(100), Some(200)),
+            Some((Some(100), Some(200)))
+        );
+    }
+
+    #[test]
+    fn build_dimensions_width_only() {
+        assert_eq!(build_dimensions(Some(100), None), Some((Some(100), None)));
+    }
+
+    #[test]
+    fn build_dimensions_height_only() {
+        assert_eq!(build_dimensions(None, Some(200)), Some((None, Some(200))));
     }
 
     #[test]
     fn build_dimensions_none() {
         assert_eq!(build_dimensions(None, None), None);
-        assert_eq!(build_dimensions(Some(100), None), None);
-        assert_eq!(build_dimensions(None, Some(200)), None);
     }
 }
