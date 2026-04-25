@@ -1,5 +1,4 @@
 /// Watercolor theme implementation — color bleed and mixing effect.
-
 use rand::Rng;
 
 /// Watercolor color palette — soft pastel colors
@@ -59,8 +58,8 @@ pub fn watercolor_filter_defs(_seed: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_watercolor_stroke_returns_pastel_color() {

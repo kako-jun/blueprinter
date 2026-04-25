@@ -88,7 +88,9 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     // defs now includes blueprinter filter content, so check components separately
-    assert!(transformed.contains(r##"<linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient>"##));
+    assert!(transformed.contains(
+        r##"<linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient>"##
+    ));
     assert!(transformed.contains("<filter id=\"text-grunge\""));
     assert!(transformed.contains("<filter id=\"subtle-bleed\""));
     assert!(transformed.contains(r##"<g id="layer1" class="node" transform="translate(1 2)""##));
@@ -299,14 +301,13 @@ fn transform_svg_keeps_text_layout_and_only_jitters_rotation_and_opacity() {
     assert!(transformed.contains("transform=\"rotate("));
 }
 
-
 #[test]
 fn transform_svg_converts_circle_to_jittered_path() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
       <circle cx="50" cy="50" r="20" stroke="red" stroke-width="2"/>
     </svg>"#;
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-    
+
     assert!(!transformed.contains("<circle"));
     assert!(transformed.contains("<path"));
     assert!(transformed.contains("d=\"M"));
@@ -320,7 +321,7 @@ fn transform_svg_converts_ellipse_to_jittered_path() {
       <ellipse cx="50" cy="50" rx="30" ry="20" stroke="blue" stroke-width="1.5"/>
     </svg>"#;
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-    
+
     assert!(!transformed.contains("<ellipse"));
     assert!(transformed.contains("<path"));
     assert!(transformed.contains("d=\"M"));
@@ -333,7 +334,7 @@ fn transform_svg_converts_polygon_to_jittered_path() {
       <polygon points="10,10 20,20 30,10" stroke="green" fill="yellow"/>
     </svg>"#;
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-    
+
     assert!(!transformed.contains("<polygon"));
     assert!(transformed.contains("<path"));
     assert!(transformed.contains("d=\"M"));
@@ -390,8 +391,8 @@ fn transform_svg_jitters_existing_text_opacity() {
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     // text 要素の opacity はジッターされ、各 tspan にも個別のジッター opacity が適用される
-    assert!(transformed.contains(r#"opacity="0.8"#));  // opacity 属性が存在する
-    assert!(!transformed.contains(r#"opacity="0.800""#));  // ジッターされているため、元の値は保持されない
+    assert!(transformed.contains(r#"opacity="0.8"#)); // opacity 属性が存在する
+    assert!(!transformed.contains(r#"opacity="0.800""#)); // ジッターされているため、元の値は保持されない
     assert!(transformed.contains("<tspan"));
     // 複数の tspan が存在
     assert!(transformed.matches("<tspan").count() > 1);

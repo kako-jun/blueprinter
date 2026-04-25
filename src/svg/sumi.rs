@@ -1,5 +1,4 @@
 /// Sumi (墨) theme implementation — ink bleed effect.
-
 use rand::Rng;
 
 /// Applies sumi theme to a stroke color.
@@ -45,8 +44,8 @@ pub fn sumi_filter_defs(_seed: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_sumi_stroke_returns_grayscale() {

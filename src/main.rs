@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use blueprinter::jitter::JitterConfig;
-use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, TransformOptions, Theme};
+use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, TransformOptions};
 
 #[derive(Parser)]
 #[command(name = "blueprinter")]
@@ -185,7 +185,9 @@ fn main() {
                                 eprintln!("Error: failed to write output PNG: {err}");
                                 std::process::exit(1);
                             }
-                            println!("Transformed: {input} -> {output} (theme: {theme}, format: png)");
+                            println!(
+                                "Transformed: {input} -> {output} (theme: {theme}, format: png)"
+                            );
                         }
                         Err(err) => {
                             eprintln!("Error: failed to export PNG: {err}");
@@ -201,7 +203,9 @@ fn main() {
                                 eprintln!("Error: failed to write output WebP: {err}");
                                 std::process::exit(1);
                             }
-                            println!("Transformed: {input} -> {output} (theme: {theme}, format: webp)");
+                            println!(
+                                "Transformed: {input} -> {output} (theme: {theme}, format: webp)"
+                            );
                         }
                         Err(err) => {
                             eprintln!("Error: failed to export WebP: {err}");

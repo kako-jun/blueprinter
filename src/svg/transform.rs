@@ -76,7 +76,7 @@ fn serialize_node(
     if should_jitter(&node) {
         let primitive = crate::svg::parser::parse_node(&node);
         if let Some(path) = jittered_path_data(&primitive, config, seed_state) {
-            return serialize_jittered_path(node, &path, options);
+            return serialize_jittered_path(node, &path, options, seed_state);
         }
     }
 
@@ -129,7 +129,12 @@ fn jittered_path_data(
     jitter_primitive_path_with_seed(primitive, config, seed_state)
 }
 
-fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath, options: &TransformOptions) -> String {
+fn serialize_jittered_path(
+    source: Node<'_, '_>,
+    path: &JitteredPath,
+    options: &TransformOptions,
+    seed_state: &mut Option<u64>,
+) -> String {
     let tag = qualified_replacement_path_name(source);
     let source_tag = source.tag_name().name();
     let mut out = String::from("<");
@@ -146,6 +151,9 @@ fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath, options: &
         }
     }
     out.push_str(&format_attr("d", &path.d));
+
+    let mut rng = next_rng(seed_state);
+
     for attr in source.attributes() {
         if path.stroke_width.is_some() && attr.name() == "stroke-width" {
             continue;
@@ -153,8 +161,19 @@ fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath, options: &
         if !is_geometry_attr(source_tag, attr.name()) {
             let attr_name = qualified_attr_name(source, &attr);
             let attr_value = match attr.name() {
-                "stroke" => apply_theme_stroke(options.theme, attr.value()),
-                "fill" => apply_theme_fill(options.theme, attr.value(), source_tag),
+                "stroke" => match options.theme {
+                    Theme::Watercolor => crate::svg::watercolor::apply_watercolor_stroke(&mut rng),
+                    Theme::Sumi => apply_theme_stroke(options.theme, attr.value()),
+                    _ => apply_theme_stroke(options.theme, attr.value()),
+                },
+                "fill" => match options.theme {
+                    Theme::Watercolor => crate::svg::watercolor::apply_watercolor_fill(
+                        attr.value(),
+                        source_tag,
+                        &mut rng,
+                    ),
+                    _ => apply_theme_fill(options.theme, attr.value(), source_tag),
+                },
                 "style" => apply_theme_to_style(options.theme, attr.value(), source_tag),
                 _ => attr.value().to_string(),
             };
@@ -164,12 +183,28 @@ fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath, options: &
     if let Some(stroke_width) = path.stroke_width {
         out.push_str(&format_attr("stroke-width", &format!("{stroke_width:.3}")));
     }
+
+    // Add stroke-opacity for theme-based opacity randomization
+    match options.theme {
+        Theme::Sumi => {
+            let opacity = crate::svg::sumi::sumi_random_opacity(&mut rng);
+            out.push_str(&format_attr("stroke-opacity", &format!("{opacity:.3}")));
+        }
+        Theme::Watercolor => {
+            let opacity = crate::svg::watercolor::watercolor_random_opacity(&mut rng);
+            out.push_str(&format_attr("stroke-opacity", &format!("{opacity:.3}")));
+        }
+        _ => {}
+    }
+
     // Add default stroke for blueprint theme if stroke is not present
     let has_stroke = source.attribute("stroke").is_some() || source.attribute("style").is_some();
     if options.theme == Theme::Blueprint && !has_stroke {
         out.push_str(&format_attr("stroke", "#e8e8e8"));
     }
-    out.push_str(r#" filter="url(#subtle-bleed)""#);
+
+    let filter_id = get_theme_filter_id(options.theme);
+    out.push_str(&format!(r#" filter="url(#{})""#, filter_id));
     out.push_str(" />");
     out
 }
@@ -242,7 +277,10 @@ fn serialize_original_element(
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
         }
-        out.push_str(&bp_filter_defs_content(seed_state.unwrap_or(42), options.theme));
+        out.push_str(&bp_filter_defs_content(
+            seed_state.unwrap_or(42),
+            options.theme,
+        ));
     } else {
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
@@ -336,7 +374,7 @@ fn has_defs_child(node: &Node<'_, '_>) -> bool {
 fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
     let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#;
     let text_grunge = format!("{}", text_grunge.replace("{seed}", &seed.to_string()));
-    
+
     let subtle_bleed = r#"<filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#;
 
     match theme {
@@ -395,6 +433,15 @@ fn apply_theme_fill(theme: Theme, fill: &str, tag: &str) -> String {
     }
 }
 
+fn get_theme_filter_id(theme: Theme) -> &'static str {
+    match theme {
+        Theme::Sumi => "sumi-ink-bleed",
+        Theme::Watercolor => "watercolor-bleed",
+        Theme::Blueprint => "subtle-bleed",
+        Theme::None => "subtle-bleed",
+    }
+}
+
 fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
     match theme {
         Theme::Blueprint => {
@@ -416,11 +463,11 @@ fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
                             if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
                                 result.push_str("fill:none;");
                             } else {
-                                result.push_str(&format!("{}:{};" , key, value));
+                                result.push_str(&format!("{}:{};", key, value));
                             }
                         }
                         _ => {
-                            result.push_str(&format!("{}:{};" , key, value));
+                            result.push_str(&format!("{}:{};", key, value));
                         }
                     }
                 } else {
@@ -452,11 +499,11 @@ fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
                             if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
                                 result.push_str("fill:none;");
                             } else {
-                                result.push_str(&format!("{}:{};" , key, value));
+                                result.push_str(&format!("{}:{};", key, value));
                             }
                         }
                         _ => {
-                            result.push_str(&format!("{}:{};" , key, value));
+                            result.push_str(&format!("{}:{};", key, value));
                         }
                     }
                 } else {
@@ -487,11 +534,11 @@ fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
                             if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
                                 result.push_str("fill:#FFB3BACC;");
                             } else {
-                                result.push_str(&format!("{}:{};" , key, value));
+                                result.push_str(&format!("{}:{};", key, value));
                             }
                         }
                         _ => {
-                            result.push_str(&format!("{}:{};" , key, value));
+                            result.push_str(&format!("{}:{};", key, value));
                         }
                     }
                 } else {
@@ -569,7 +616,10 @@ fn serialize_text_content(
         if let (Some(x), Some(y)) = (char_x, char_y) {
             let angle = uniform_noise(&mut rng, rotation_amplitude);
             if angle.abs() > 0.01 {
-                out.push_str(&format!(r#" transform="rotate({:.2} {:.3} {:.3})""#, angle, x, y));
+                out.push_str(&format!(
+                    r#" transform="rotate({:.2} {:.3} {:.3})""#,
+                    angle, x, y
+                ));
             }
         }
 
@@ -882,7 +932,6 @@ mod tests {
         assert!(result.contains(r##"stroke="#e8e8e8""##));
     }
 
-
     #[test]
     fn test_sumi_theme_produces_grayscale() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
@@ -915,8 +964,15 @@ mod tests {
         };
 
         let result = transform_svg(svg, &config, &options).unwrap();
-        // watercolor theme should use pastel color
-        assert!(result.contains("#FFB3BA"));
+        // watercolor theme should use a pastel color from the palette
+        let palette_colors = [
+            "#FFB3BA", "#FFDFBA", "#FFFFBA", "#BAFFC9", "#BAE1FF", "#E0BBE4", "#FFC7F5",
+        ];
+        let has_palette_color = palette_colors.iter().any(|color| result.contains(color));
+        assert!(
+            has_palette_color,
+            "Result should contain at least one watercolor palette color"
+        );
     }
 
     #[test]
@@ -947,4 +1003,115 @@ mod tests {
         assert!(watercolor_result.contains("feGaussianBlur"));
         assert!(watercolor_result.contains("watercolor-bleed"));
     }
+}
+
+#[test]
+fn test_theme_filter_ids_are_applied() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" stroke="black"/>
+        </svg>"#;
+
+    let config = JitterConfig::default();
+
+    // Test Blueprint theme
+    let blueprint_options = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Blueprint,
+    };
+    let blueprint_result = transform_svg(svg, &config, &blueprint_options).unwrap();
+    assert!(blueprint_result.contains(r##"filter="url(#subtle-bleed)""##));
+
+    // Test Sumi theme
+    let sumi_options = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Sumi,
+    };
+    let sumi_result = transform_svg(svg, &config, &sumi_options).unwrap();
+    assert!(sumi_result.contains(r##"filter="url(#sumi-ink-bleed)""##));
+
+    // Test Watercolor theme
+    let watercolor_options = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Watercolor,
+    };
+    let watercolor_result = transform_svg(svg, &config, &watercolor_options).unwrap();
+    assert!(watercolor_result.contains(r##"filter="url(#watercolor-bleed)""##));
+}
+
+#[test]
+fn test_watercolor_opacity_randomization() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" stroke="black"/>
+        </svg>"#;
+
+    let config = JitterConfig::default();
+    let options = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Watercolor,
+    };
+
+    let result = transform_svg(svg, &config, &options).unwrap();
+    // Check that stroke-opacity is set for watercolor theme
+    assert!(
+        result.contains(r##"stroke-opacity=""##),
+        "Watercolor should have randomized stroke-opacity"
+    );
+}
+
+#[test]
+fn test_sumi_opacity_randomization() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" stroke="black"/>
+        </svg>"#;
+
+    let config = JitterConfig::default();
+    let options = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Sumi,
+    };
+
+    let result = transform_svg(svg, &config, &options).unwrap();
+    // Check that stroke-opacity is set for sumi theme
+    assert!(
+        result.contains(r##"stroke-opacity=""##),
+        "Sumi should have randomized stroke-opacity"
+    );
+}
+
+#[test]
+fn test_watercolor_color_randomization_varies_with_seed() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" stroke="black"/>
+          <circle cx="30" cy="30" r="15" stroke="black"/>
+          <circle cx="70" cy="70" r="18" stroke="black"/>
+        </svg>"#;
+
+    let config = JitterConfig::default();
+    let options = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Watercolor,
+    };
+
+    let result1 = transform_svg(svg, &config, &options).unwrap();
+    let result2 = transform_svg(
+        svg,
+        &config,
+        &TransformOptions {
+            seed: Some(43),
+            font_family_override: None,
+            theme: Theme::Watercolor,
+        },
+    )
+    .unwrap();
+
+    // Different seeds should produce different color combinations
+    // (though we can't guarantee they'll be completely different due to randomness,
+    // with 3 circles and 7 palette colors, different seeds have high probability of variation)
+    assert_ne!(result1, result2);
 }
