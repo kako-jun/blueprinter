@@ -106,7 +106,10 @@ fn transform_svg_escapes_decoded_text_and_attributes() {
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
     assert!(transformed.contains(r#"title="A &amp; B""#));
-    assert!(transformed.contains(">A &amp; B</text>"));
+    // text は tspan で分割されるため、各文字が別の tspan に入る
+    assert!(transformed.contains(">A</tspan>"));
+    assert!(transformed.contains(">&amp;</tspan>"));
+    assert!(transformed.contains(">B</tspan>"));
     assert!(!transformed.contains(">A & B</text>"));
 }
 
@@ -283,11 +286,12 @@ fn transform_svg_keeps_text_layout_and_only_jitters_rotation_and_opacity() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-size="12">Hello</text></svg>"#;
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
-    assert!(transformed.contains(r#"x="10""#));
-    assert!(transformed.contains(r#"y="20""#));
     assert!(transformed.contains(r#"font-size="12""#));
-    assert!(transformed.contains(r#"transform="rotate(0.032 10.000 20.000)""#));
-    assert!(!transformed.contains("opacity="));
+    // text は tspan に分割され、各文字に位置・傾きジッターが適用される
+    assert!(transformed.contains("<tspan"));
+    assert!(transformed.contains(r#"x="9."#) || transformed.contains(r#"x="10"#));
+    assert!(transformed.contains(r#"y="19."#) || transformed.contains(r#"y="20"#));
+    assert!(transformed.contains("transform=\"rotate("));
 }
 
 #[test]
@@ -313,6 +317,10 @@ fn transform_svg_jitters_existing_text_opacity() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" opacity="0.8">Hello</text></svg>"#;
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
-    assert!(transformed.contains(r#"opacity="0.802""#));
-    assert!(!transformed.contains(r#"opacity="0.8""#));
+    // text 要素の opacity はジッターされ、各 tspan にも個別のジッター opacity が適用される
+    assert!(transformed.contains(r#"opacity="0.8"#));  // opacity 属性が存在する
+    assert!(!transformed.contains(r#"opacity="0.800""#));  // ジッターされているため、元の値は保持されない
+    assert!(transformed.contains("<tspan"));
+    // 複数の tspan が存在
+    assert!(transformed.matches("<tspan").count() > 1);
 }

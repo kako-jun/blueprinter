@@ -77,7 +77,7 @@ fn should_jitter(node: &Node<'_, '_>) -> bool {
     }
 
     match node.tag_name().name() {
-        "line" | "polyline" | "path" => true,
+        "line" | "polyline" | "path" | "text" => true,
         "rect" => node.attribute("rx").is_none() && node.attribute("ry").is_none(),
         _ => false,
     }
@@ -187,8 +187,12 @@ fn serialize_original_element(
     }
 
     out.push('>');
-    for child in children {
-        out.push_str(&serialize_node(child, config, options, seed_state));
+    if tag == "text" {
+        serialize_text_content(node, config, options, seed_state, &mut out);
+    } else {
+        for child in children {
+            out.push_str(&serialize_node(child, config, options, seed_state));
+        }
     }
     out.push_str("</");
     out.push_str(&tag);
@@ -260,6 +264,60 @@ fn should_jitter_text(node: &Node<'_, '_>) -> bool {
     }
 
     matches!(node.tag_name().name(), "text" | "tspan")
+}
+
+fn serialize_text_content(
+    node: Node<'_, '_>,
+    config: &JitterConfig,
+    _options: &TransformOptions,
+    seed_state: &mut Option<u64>,
+    out: &mut String,
+) {
+    let text_content = node.text().unwrap_or_default();
+    if text_content.trim().is_empty() {
+        return;
+    }
+
+    let mut rng = next_rng(seed_state);
+    let rotation_amplitude = (config.amplitude * 0.3).clamp(0.0, 1.5);
+    let opacity_amplitude = (config.stroke_width_var * 0.2).clamp(0.0, 0.08);
+    let position_amplitude = config.amplitude * 0.2;
+
+    let base_x = node.attribute("x").and_then(|s| s.parse::<f64>().ok());
+    let base_y = node.attribute("y").and_then(|s| s.parse::<f64>().ok());
+
+    for (i, ch) in text_content.chars().enumerate() {
+        let char_x = base_x.map(|x| x + i as f64 * 6.0);
+        let char_y = base_y;
+
+        out.push_str("<tspan");
+
+        if let Some(x) = char_x {
+            let jx = uniform_noise(&mut rng, position_amplitude);
+            out.push_str(&format!(r#" x="{:.3}""#, x + jx));
+        }
+
+        if let Some(y) = char_y {
+            let jy = uniform_noise(&mut rng, position_amplitude);
+            out.push_str(&format!(r#" y="{:.3}""#, y + jy));
+        }
+
+        let opacity = jittered_opacity(1.0, &mut rng, opacity_amplitude);
+        if (opacity - 1.0).abs() > 0.001 {
+            out.push_str(&format!(r#" opacity="{:.3}""#, opacity));
+        }
+
+        if let (Some(x), Some(y)) = (char_x, char_y) {
+            let angle = uniform_noise(&mut rng, rotation_amplitude);
+            if angle.abs() > 0.01 {
+                out.push_str(&format!(r#" transform="rotate({:.2} {:.3} {:.3})""#, angle, x, y));
+            }
+        }
+
+        out.push('>');
+        out.push_str(&escape_text(&ch.to_string()));
+        out.push_str("</tspan>");
+    }
 }
 
 fn serialize_text_attrs(
@@ -407,4 +465,44 @@ fn escape_text(value: &str) -> String {
 
 fn escape_attr(value: &str) -> String {
     escape_text(value).replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_text_with_jitter() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+          <text x="10" y="20" font-family="Arial">Hi</text>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        assert!(result.contains("<tspan"));
+        assert!(result.contains("</tspan>"));
+        assert!(result.contains("H"));
+        assert!(result.contains("i"));
+    }
+
+    #[test]
+    fn test_text_with_font_family_override() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+          <text x="10" y="20" font-family="Arial">Test</text>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: Some("Georgia".to_string()),
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        assert!(result.contains(r#"font-family="Georgia""#));
+    }
 }
