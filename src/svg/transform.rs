@@ -18,6 +18,7 @@ pub enum Theme {
     Sumi,
     Watercolor,
     Chalk,
+    Marker,
 }
 
 #[derive(Debug, PartialEq)]

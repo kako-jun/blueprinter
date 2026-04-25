@@ -51,7 +51,7 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 - `sumi` — Japanese ink wash painting with grayscale ink bleed effect (now implemented)
 - `watercolor` — soft pigment bleeding and color mixing (now implemented)
 - `chalk` — white chalk on a blackboard, with dust/breakup filter (now implemented)
-- `marker` — planned bold neon marker strokes
+- `marker` — bold neon marker strokes on a dark sketchbook (now implemented)
 - `manga` — planned screentone patterns and speed lines
 
 ### Sumi Theme
@@ -81,6 +81,21 @@ blueprinter transform -i input.svg -o output.svg --theme watercolor --seed 42
 - Color matrix saturation adjustment (90%) for soft, washed appearance
 - Semi-transparent fills (0.5–0.9) for transparency effect
 
+### Marker Theme
+
+The marker theme renders strokes in saturated neon highlighter colors on a dark navy background, with a soft halo behind each shape.
+
+```bash
+blueprinter transform -i input.svg -o output.svg --theme marker --seed 42
+```
+
+**Features:**
+- Dark navy background (#1a1a2e) inserted automatically
+- Six-color neon palette (hot pink, cyan, lime, orange, yellow, magenta) — sampled per shape
+- Closed shapes get a translucent palette-colored fill (~20% alpha) for highlighter-style overlap
+- `marker-glow` filter (Gaussian blur halo merged behind source) for a slight bleed
+- Stroke opacity 0.85–1.0 — marker ink is consistent
+
 ### Chalk Theme
 
 The chalk theme renders strokes as white (and occasional pale color) chalk on a slate-green chalkboard, with a dust filter that breaks each stroke up.
@@ -105,6 +120,7 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 - **Sumi theme**: ink wash effect with grayscale colors and blur filters
 - **Watercolor theme**: pastel color palette with diffuse bleed effect
 - **Chalk theme**: white chalk strokes on a chalkboard with dust/breakup filter
+- **Marker theme**: bold neon highlighter strokes on a dark navy background with halo
 - Jitter controls: `--jitter-amplitude`, `--jitter-frequency`, `--jitter-stroke-width-var`
 - Text overrides: `--font-family` for font replacement
 - Reproducible output: `--seed` for deterministic jitter
@@ -112,7 +128,7 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 
 ### Planned
 - WebP output (currently PNG only)
-- Additional themes: `marker`, `manga`
+- Additional themes: `manga`
 - Full theme styling for blueprint (currently basic)
 - Text outline conversion for advanced effects
 - `render` command (Mermaid/draw.io → SVG → hand-drawn SVG)

@@ -97,7 +97,7 @@ Output SVG
 | `sumi` | Implemented | Japanese ink wash painting with grayscale strokes and Gaussian bleed. |
 | `watercolor` | Implemented | Soft pastel palette, color-mixing bleed, and stroke replicas for diffuse pigment. |
 | `chalk` | Implemented | White (and pale color) chalk on a slate-green chalkboard, with a turbulence-driven dust filter that breaks each stroke up. |
-| `marker` | Planned | Bold neon marker strokes on dark background. |
+| `marker` | Implemented | Six-color neon highlighter palette on a dark navy sketchbook, with a Gaussian-blur halo behind each shape and translucent palette fills. |
 | `manga` | Planned | Screentone patterns and speed lines. |
 
 ## Technology Stack

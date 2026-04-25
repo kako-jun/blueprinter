@@ -98,6 +98,7 @@ static SUMI: crate::svg::sumi::SumiStyle = crate::svg::sumi::SumiStyle;
 static WATERCOLOR: crate::svg::watercolor::WatercolorStyle =
     crate::svg::watercolor::WatercolorStyle;
 static CHALK: crate::svg::chalk::ChalkStyle = crate::svg::chalk::ChalkStyle;
+static MARKER: crate::svg::marker::MarkerStyle = crate::svg::marker::MarkerStyle;
 
 pub fn theme_style(theme: Theme) -> &'static dyn ThemeStyle {
     match theme {
@@ -106,6 +107,7 @@ pub fn theme_style(theme: Theme) -> &'static dyn ThemeStyle {
         Theme::Sumi => &SUMI,
         Theme::Watercolor => &WATERCOLOR,
         Theme::Chalk => &CHALK,
+        Theme::Marker => &MARKER,
     }
 }
 
