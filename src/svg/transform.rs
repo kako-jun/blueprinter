@@ -144,6 +144,7 @@ fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath) -> String 
     if let Some(stroke_width) = path.stroke_width {
         out.push_str(&format_attr("stroke-width", &format!("{stroke_width:.3}")));
     }
+    out.push_str(r#" filter="url(#subtle-bleed)""#);
     out.push_str(" />");
     out
 }
@@ -270,7 +271,12 @@ fn should_jitter_text(node: &Node<'_, '_>) -> bool {
 }
 
 fn insert_svg_defs(out: &mut String) {
-    out.push_str(r#"<defs><filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="42"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter></defs>"#);
+    out.push_str(r#"<defs>"#);
+    // Text grunge texture filter
+    out.push_str(r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="42"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#);
+    // Subtle bleed for both lines and text
+    out.push_str(r#"<filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#);
+    out.push_str(r#"</defs>"#);
 }
 
 fn serialize_text_content(
@@ -321,7 +327,7 @@ fn serialize_text_content(
             }
         }
 
-        out.push_str(r#" filter="url(#text-grunge)""#);
+        out.push_str(r#" filter="url(#text-grunge) url(#subtle-bleed)""#);
 
         out.push('>');
         out.push_str(&escape_text(&ch.to_string()));
