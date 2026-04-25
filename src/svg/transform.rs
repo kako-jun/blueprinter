@@ -201,8 +201,15 @@ fn serialize_original_element(
     }
 
     out.push('>');
-    if tag == "svg" && !has_defs_child(&node) {
-        insert_svg_defs(&mut out, seed_state.unwrap_or(42));
+    if tag == "svg" {
+        if !has_defs_child(&node) {
+            insert_svg_defs(&mut out, seed_state.unwrap_or(42));
+        }
+        if options.theme == Theme::Blueprint {
+            if let Some(bg) = blueprint_background(&node) {
+                out.push_str(&bg);
+            }
+        }
     }
     if tag == "text" {
         serialize_text_content(node, config, options, seed_state, &mut out);
@@ -305,6 +312,44 @@ fn insert_svg_defs(out: &mut String, seed: u64) {
     out.push_str(r#"<defs>"#);
     out.push_str(&bp_filter_defs_content(seed));
     out.push_str(r#"</defs>"#);
+}
+
+fn apply_theme_stroke(theme: Theme, stroke: &str) -> String {
+    match theme {
+        Theme::Blueprint => "#e8e8e8".to_string(),
+        Theme::None => stroke.to_string(),
+    }
+}
+
+fn apply_theme_fill(theme: Theme, fill: &str, tag: &str) -> String {
+    match theme {
+        Theme::Blueprint => {
+            // For blueprint theme, closed shapes (rect, circle, etc) have no fill
+            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
+                "none".to_string()
+            } else {
+                fill.to_string()
+            }
+        }
+        Theme::None => fill.to_string(),
+    }
+}
+
+fn blueprint_background(svg_node: &Node<'_, '_>) -> Option<String> {
+    // Get dimensions from viewBox or width/height attributes
+    let width = svg_node
+        .attribute("width")
+        .and_then(|w| w.parse::<f64>().ok())
+        .unwrap_or(100.0);
+    let height = svg_node
+        .attribute("height")
+        .and_then(|h| h.parse::<f64>().ok())
+        .unwrap_or(100.0);
+
+    Some(format!(
+        r##"<rect width="{}" height="{}" fill="#1a3a5c"/>"##,
+        width, height
+    ))
 }
 
 fn serialize_text_content(
