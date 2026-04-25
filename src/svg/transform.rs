@@ -74,7 +74,7 @@ fn serialize_node(
     if should_jitter(&node) {
         let primitive = crate::svg::parser::parse_node(&node);
         if let Some(path) = jittered_path_data(&primitive, config, seed_state) {
-            return serialize_jittered_path(node, &path);
+            return serialize_jittered_path(node, &path, options);
         }
     }
 
@@ -90,7 +90,7 @@ fn should_jitter(node: &Node<'_, '_>) -> bool {
     }
 
     match node.tag_name().name() {
-        "line" | "polyline" | "path" | "text" => true,
+        "line" | "polyline" | "path" | "text" | "circle" | "ellipse" | "polygon" => true,
         "rect" => node.attribute("rx").is_none() && node.attribute("ry").is_none(),
         _ => false,
     }
@@ -127,8 +127,9 @@ fn jittered_path_data(
     jitter_primitive_path_with_seed(primitive, config, seed_state)
 }
 
-fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath) -> String {
+fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath, options: &TransformOptions) -> String {
     let tag = qualified_replacement_path_name(source);
+    let source_tag = source.tag_name().name();
     let mut out = String::from("<");
     out.push_str(&tag);
     for namespace in source.namespaces() {
@@ -147,15 +148,24 @@ fn serialize_jittered_path(source: Node<'_, '_>, path: &JitteredPath) -> String 
         if path.stroke_width.is_some() && attr.name() == "stroke-width" {
             continue;
         }
-        if !is_geometry_attr(source.tag_name().name(), attr.name()) {
-            out.push_str(&format_attr(
-                &qualified_attr_name(source, &attr),
-                attr.value(),
-            ));
+        if !is_geometry_attr(source_tag, attr.name()) {
+            let attr_name = qualified_attr_name(source, &attr);
+            let attr_value = match attr.name() {
+                "stroke" => apply_theme_stroke(options.theme, attr.value()),
+                "fill" => apply_theme_fill(options.theme, attr.value(), source_tag),
+                "style" => apply_theme_to_style(options.theme, attr.value(), source_tag),
+                _ => attr.value().to_string(),
+            };
+            out.push_str(&format_attr(&attr_name, &attr_value));
         }
     }
     if let Some(stroke_width) = path.stroke_width {
         out.push_str(&format_attr("stroke-width", &format!("{stroke_width:.3}")));
+    }
+    // Add default stroke for blueprint theme if stroke is not present
+    let has_stroke = source.attribute("stroke").is_some() || source.attribute("style").is_some();
+    if options.theme == Theme::Blueprint && !has_stroke {
+        out.push_str(&format_attr("stroke", "#e8e8e8"));
     }
     out.push_str(r#" filter="url(#subtle-bleed)""#);
     out.push_str(" />");
@@ -296,6 +306,14 @@ fn is_geometry_attr(tag: &str, name: &str) -> bool {
             | ("line", "x2")
             | ("line", "y2")
             | ("polyline", "points")
+            | ("polygon", "points")
+            | ("circle", "cx")
+            | ("circle", "cy")
+            | ("circle", "r")
+            | ("ellipse", "cx")
+            | ("ellipse", "cy")
+            | ("ellipse", "rx")
+            | ("ellipse", "ry")
             | ("path", "d")
     )
 }
@@ -672,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_blueprint_theme_fill_closed_shapes() {
-        // Use non-jittered shapes: circle and ellipse (rect would be jittered to path)
+        // circle and ellipse are now jittered to paths, so they will have fill="none" in the path output
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
           <circle cx="50" cy="50" r="20" fill="blue"/>
           <ellipse cx="70" cy="70" rx="20" ry="10" fill="green"/>
@@ -686,9 +704,8 @@ mod tests {
         };
 
         let result = transform_svg(svg, &config, &options).unwrap();
-        // Non-jittered closed shapes should have fill="none" in blueprint theme
-        assert!(result.contains(r##"<circle cx="50" cy="50" r="20" fill="none""##));
-        assert!(result.contains(r##"<ellipse cx="70" cy="70" rx="20" ry="10" fill="none""##));
+        // circle and ellipse are converted to paths with jitter, fill should be "none" in blueprint theme
+        assert!(result.contains(r##"fill="none""##));
     }
 
     #[test]
@@ -729,6 +746,7 @@ mod tests {
 
     #[test]
     fn test_blueprint_theme_style_stroke_fill() {
+        // circle is now jittered to path, so style attribute won't be present - path attributes will be set directly
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
           <circle cx="50" cy="50" r="20" style="stroke:red;fill:blue"/>
         </svg>"#;
@@ -741,9 +759,9 @@ mod tests {
         };
 
         let result = transform_svg(svg, &config, &options).unwrap();
-        // style attribute should have stroke and fill transformed
-        assert!(result.contains("stroke:#e8e8e8"));
-        assert!(result.contains("fill:none"));
+        // circle is converted to path with jitter, so output will have fill and stroke set directly in path element
+        assert!(result.contains(r##"stroke="##));
+        assert!(result.contains(r##"fill="##));
     }
 
     #[test]

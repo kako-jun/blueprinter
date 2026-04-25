@@ -150,6 +150,36 @@ fn jitter_primitive_path_with_rng<R: Rng + ?Sized>(
                 stroke_width: jittered_stroke_width(*stroke_width, config, rng),
             })
         }
+        Primitive::Circle {
+            cx, cy, r, stroke_width, ..
+        } => {
+            let path_d = circle_to_path(*cx, *cy, *r);
+            let d = jitter_path_d(&path_d, config, rng)?;
+            Some(JitteredPath {
+                d,
+                stroke_width: jittered_stroke_width(*stroke_width, config, rng),
+            })
+        }
+        Primitive::Ellipse {
+            cx, cy, rx, ry, stroke_width, ..
+        } => {
+            let path_d = ellipse_to_path(*cx, *cy, *rx, *ry);
+            let d = jitter_path_d(&path_d, config, rng)?;
+            Some(JitteredPath {
+                d,
+                stroke_width: jittered_stroke_width(*stroke_width, config, rng),
+            })
+        }
+        Primitive::Polygon {
+            points, stroke_width, ..
+        } => {
+            let path_d = polygon_to_path(points);
+            let d = jitter_path_d(&path_d, config, rng)?;
+            Some(JitteredPath {
+                d,
+                stroke_width: jittered_stroke_width(*stroke_width, config, rng),
+            })
+        }
         _ => None,
     }
 }
@@ -628,6 +658,59 @@ fn read_number(tokens: &[String], index: usize) -> Option<f64> {
         return None;
     }
     token.parse::<f64>().ok()
+}
+
+/// Convert circle to path with 4 Bezier curves
+/// k ≈ 0.55228 (4/3 * tan(π/8))
+fn circle_to_path(cx: f64, cy: f64, r: f64) -> String {
+    const K: f64 = 0.55228475;
+    let kr = K * r;
+    format!(
+        "M {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} Z",
+        // Start at left point
+        cx - r, cy,
+        // Top-left curve
+        cx - r, cy - kr, cx - kr, cy - r, cx, cy - r,
+        // Top-right curve
+        cx + kr, cy - r, cx + r, cy - kr, cx + r, cy,
+        // Bottom-right curve
+        cx + r, cy + kr, cx + kr, cy + r, cx, cy + r,
+        // Bottom-left curve
+        cx - kr, cy + r, cx - r, cy + kr, cx - r, cy,
+    )
+}
+
+/// Convert ellipse to path with 4 Bezier curves
+fn ellipse_to_path(cx: f64, cy: f64, rx: f64, ry: f64) -> String {
+    const K: f64 = 0.55228475;
+    let krx = K * rx;
+    let kry = K * ry;
+    format!(
+        "M {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} C {:.3} {:.3} {:.3} {:.3} {:.3} {:.3} Z",
+        // Start at left point
+        cx - rx, cy,
+        // Top-left curve
+        cx - rx, cy - kry, cx - krx, cy - ry, cx, cy - ry,
+        // Top-right curve
+        cx + krx, cy - ry, cx + rx, cy - kry, cx + rx, cy,
+        // Bottom-right curve
+        cx + rx, cy + kry, cx + krx, cy + ry, cx, cy + ry,
+        // Bottom-left curve
+        cx - krx, cy + ry, cx - rx, cy + kry, cx - rx, cy,
+    )
+}
+
+/// Convert polygon to path
+fn polygon_to_path(points: &[(f64, f64)]) -> String {
+    if points.is_empty() {
+        return String::new();
+    }
+    let mut d = format!("M {:.3} {:.3}", points[0].0, points[0].1);
+    for &(x, y) in &points[1..] {
+        d.push_str(&format!(" L {:.3} {:.3}", x, y));
+    }
+    d.push_str(" Z");
+    d
 }
 
 #[cfg(test)]

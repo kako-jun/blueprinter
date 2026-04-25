@@ -21,7 +21,8 @@ fn transform_svg_preserves_root_and_writes_jittered_paths() {
     assert!(transformed.contains("<path"));
     assert!(transformed.contains("<text x="));
     assert!(transformed.contains("<g>"));
-    assert!(transformed.contains("<circle"));
+    // circle elements are now converted to paths with jitter, so they no longer appear as <circle
+    assert!(transformed.contains("d=\"M"));
 }
 
 #[test]
@@ -296,6 +297,73 @@ fn transform_svg_keeps_text_layout_and_only_jitters_rotation_and_opacity() {
     assert!(transformed.contains(r#"x="9."#) || transformed.contains(r#"x="10"#));
     assert!(transformed.contains(r#"y="19."#) || transformed.contains(r#"y="20"#));
     assert!(transformed.contains("transform=\"rotate("));
+}
+
+
+#[test]
+fn transform_svg_converts_circle_to_jittered_path() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+      <circle cx="50" cy="50" r="20" stroke="red" stroke-width="2"/>
+    </svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    
+    assert!(!transformed.contains("<circle"));
+    assert!(transformed.contains("<path"));
+    assert!(transformed.contains("d=\"M"));
+    assert!(transformed.contains(r#"stroke="red""#));
+    assert!(transformed.contains("filter=\"url(#subtle-bleed)\""));
+}
+
+#[test]
+fn transform_svg_converts_ellipse_to_jittered_path() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+      <ellipse cx="50" cy="50" rx="30" ry="20" stroke="blue" stroke-width="1.5"/>
+    </svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    
+    assert!(!transformed.contains("<ellipse"));
+    assert!(transformed.contains("<path"));
+    assert!(transformed.contains("d=\"M"));
+    assert!(transformed.contains(r#"stroke="blue""#));
+}
+
+#[test]
+fn transform_svg_converts_polygon_to_jittered_path() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+      <polygon points="10,10 20,20 30,10" stroke="green" fill="yellow"/>
+    </svg>"#;
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    
+    assert!(!transformed.contains("<polygon"));
+    assert!(transformed.contains("<path"));
+    assert!(transformed.contains("d=\"M"));
+    assert!(transformed.contains("L"));
+    assert!(transformed.contains("Z"));
+    assert!(transformed.contains(r#"stroke="green""#));
+}
+
+#[test]
+fn transform_svg_circle_ellipse_polygon_reproducible_with_same_seed() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+      <circle cx="50" cy="50" r="20"/>
+      <ellipse cx="30" cy="30" rx="15" ry="10"/>
+      <polygon points="10,10 20,20 30,10"/>
+    </svg>"#;
+    let config = JitterConfig::default();
+    let out1 = transform_svg(svg, &config, &options(42)).unwrap();
+    let out2 = transform_svg(svg, &config, &options(42)).unwrap();
+    assert_eq!(out1, out2);
+}
+
+#[test]
+fn transform_svg_circle_ellipse_polygon_different_with_different_seed() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+      <circle cx="50" cy="50" r="20"/>
+    </svg>"#;
+    let config = JitterConfig::default();
+    let out1 = transform_svg(svg, &config, &options(42)).unwrap();
+    let out2 = transform_svg(svg, &config, &options(43)).unwrap();
+    assert_ne!(out1, out2);
 }
 
 #[test]
