@@ -85,10 +85,11 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
 </svg>"##;
     let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
 
-    assert!(transformed.contains(
-        r##"<defs><linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient></defs>"##
-    ));
-    assert!(transformed.contains(r#"<g id="layer1" class="node" transform="translate(1 2)">"#));
+    // defs now includes blueprinter filter content, so check components separately
+    assert!(transformed.contains(r##"<linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient>"##));
+    assert!(transformed.contains("<filter id=\"text-grunge\""));
+    assert!(transformed.contains("<filter id=\"subtle-bleed\""));
+    assert!(transformed.contains(r##"<g id="layer1" class="node" transform="translate(1 2)""##));
     assert!(transformed.contains(
         r#"<rect id="rounded" x="1" y="2" width="3" height="4" rx="1" style="opacity:0.5" />"#
     ));
