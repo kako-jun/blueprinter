@@ -53,8 +53,8 @@
 
 ### Phase 4: テキスト・フォント（#4, #12）
 
-- [~] text のフォント差し替え + ジッター（初版: `--font-family` override / 元フォント維持 / layout固定のまま subtle rotation,opacity jitter）
-- [ ] フォント選定と同梱（OFLライセンス確認）
+- [x] text のフォント差し替え + ジッター（`--font-family` override / 元フォント維持 / layout固定のまま subtle rotation,opacity jitter / raster export ではシステムフォントを自動ロード）
+- [ ] フォント選定と同梱（OFLライセンス確認）— 未着手。同梱したフォントを既定で参照することでクロスプラットフォーム再現性を高める拡張
 
 ### Phase 5: 入出力拡張（#9〜#11）
 

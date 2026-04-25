@@ -235,7 +235,7 @@ fn serialize_original_element(
             };
             out.push_str(&format_attr(&attr_name, &attr_value));
         }
-        if !has_stroke {
+        if !has_stroke && !is_inside_non_visual_container(&node) {
             if let Some(stroke) = style.default_stroke_static() {
                 out.push_str(&format_attr("stroke", &stroke));
             }

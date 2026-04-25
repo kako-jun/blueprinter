@@ -154,6 +154,10 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 - `render` command (Mermaid/draw.io → SVG → hand-drawn SVG)
 - `convert` command (general format conversion)
 
+### Font Resolution
+
+When rasterizing to PNG / WebP, blueprinter loads the host's system fonts so any `font-family` referenced in the input SVG (e.g. `Arial`, `Helvetica`) resolves. If the requested face is not installed, resvg falls back to a generic family. Bundled default fonts for cross-platform reproducibility are planned.
+
 ### Known Limitations
 - XML declarations, comments, processing instructions, doctypes, and CDATA boundaries are not preserved
 - Symbols and definitions under `defs`/`symbol`/`marker` are preserved without jitter
