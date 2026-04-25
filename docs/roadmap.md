@@ -59,7 +59,7 @@
 ### Phase 5: 入出力拡張（#9〜#11）
 
 - [x] Mermaid 入力対応（mmdc 外部コマンド呼び出し）— `render` サブコマンドが mmdc を呼び出して Mermaid → SVG → transform → 任意フォーマットでパイプライン化
-- [ ] md 一括変換モード — `.md` 中の複数 ` ```mermaid ` ブロックを一括処理
+- [x] md 一括変換モード — `md` サブコマンドが `.md` から ` ```mermaid ` ブロックを抽出 (line-by-line state machine、依存追加なし) し、`<out_dir>/<stem>-<n>.<ext>` で連番出力
 - [x] PNG 出力（resvg 導入、#11 完了）— `--format png`, `--scale`, `--width`, `--height` 対応
 - [x] WebP 出力（lossless）— `webp` クレート導入、PNG と同じフラグで動作。Diagram 用途では PNG より大幅に小さくなる
 

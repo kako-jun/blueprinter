@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use blueprinter::jitter::JitterConfig;
-use blueprinter::render::{mermaid_to_svg, RenderError};
+use blueprinter::render::{extract_mermaid_blocks, mermaid_to_svg, RenderError};
 use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, TransformOptions};
 
 #[derive(Parser)]
@@ -106,6 +106,36 @@ enum Commands {
         #[arg(short, long)]
         output: String,
     },
+    /// Batch-render every ` ```mermaid ` block in a Markdown file
+    Md {
+        /// Input Markdown file path
+        #[arg(short, long)]
+        input: String,
+
+        /// Output directory (created if it does not exist). Files are named
+        /// `<md-stem>-<index>.<ext>` where index starts at 1.
+        #[arg(short, long)]
+        out_dir: String,
+
+        #[command(flatten)]
+        style: StyleArgs,
+
+        /// Output format (svg, png, webp). Default: svg.
+        #[arg(long, default_value = "svg")]
+        format: String,
+
+        /// Scale factor for raster output (default: 1.0)
+        #[arg(long, default_value = "1.0")]
+        scale: f32,
+
+        /// Explicit output width (in pixels, for raster formats)
+        #[arg(long)]
+        width: Option<u32>,
+
+        /// Explicit output height (in pixels, for raster formats)
+        #[arg(long)]
+        height: Option<u32>,
+    },
 }
 
 fn main() {
@@ -144,6 +174,89 @@ fn main() {
             let _ = (input, output);
             std::process::exit(1);
         }
+        Commands::Md {
+            input,
+            out_dir,
+            style,
+            format,
+            scale,
+            width,
+            height,
+        } => {
+            run_md_batch(&input, &out_dir, &style, &format, scale, width, height);
+        }
+    }
+}
+
+fn run_md_batch(
+    input_path: &str,
+    out_dir: &str,
+    style: &StyleArgs,
+    format: &str,
+    scale: f32,
+    width: Option<u32>,
+    height: Option<u32>,
+) {
+    let md = read_input(input_path);
+    let blocks = extract_mermaid_blocks(&md);
+    if blocks.is_empty() {
+        eprintln!("No `mermaid` code blocks found in {input_path}.");
+        std::process::exit(0);
+    }
+
+    if let Err(err) = fs::create_dir_all(out_dir) {
+        eprintln!("Error: failed to create output directory '{out_dir}': {err}");
+        std::process::exit(1);
+    }
+
+    let stem = Path::new(input_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("diagram");
+    let ext = match format {
+        "svg" | "png" | "webp" => format,
+        _ => {
+            eprintln!("Error: unknown format '{format}'. Supported: svg, png, webp.");
+            std::process::exit(1);
+        }
+    };
+
+    let mut failures = 0usize;
+    for (index, mermaid) in blocks.iter().enumerate() {
+        let n = index + 1;
+        let out_path = Path::new(out_dir).join(format!("{stem}-{n}.{ext}"));
+        let out_str = out_path.to_string_lossy().into_owned();
+
+        let svg = match mermaid_to_svg(mermaid) {
+            Ok(svg) => svg,
+            Err(RenderError::MmdcNotFound) => {
+                eprintln!("Error: {}", RenderError::MmdcNotFound);
+                std::process::exit(127);
+            }
+            Err(err) => {
+                eprintln!("[{n}/{total}] mmdc failed: {err}", total = blocks.len());
+                failures += 1;
+                continue;
+            }
+        };
+
+        let output_args = OutputArgs {
+            output: out_str.clone(),
+            format: Some(ext.to_string()),
+            scale,
+            width,
+            height,
+        };
+        let label = format!("{input_path}#{n}");
+        run_pipeline(&svg, &label, style, &output_args, "rendered");
+    }
+
+    if failures > 0 {
+        eprintln!(
+            "{failures}/{total} blocks failed (other blocks were written successfully).",
+            total = blocks.len(),
+        );
+        std::process::exit(1);
     }
 }
 

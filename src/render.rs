@@ -75,6 +75,67 @@ pub fn mermaid_to_svg(source: &str) -> Result<String, RenderError> {
     svg
 }
 
+/// Extracts every ` ```mermaid ` fenced code block from a Markdown source,
+/// in document order. Other fenced code blocks are skipped. Unclosed blocks
+/// at end-of-file are dropped silently — the input was malformed.
+///
+/// The line-by-line state machine handles the common cases: 3-backtick
+/// fences, info-string variants (`mermaid`, `mermaid `, `mermaid foo`),
+/// non-mermaid fences in between. It does not handle indented code blocks
+/// or `~~~` fences (rare in mermaid contexts).
+pub fn extract_mermaid_blocks(md: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut state = ExtractState::Outside;
+    for line in md.lines() {
+        state = advance(state, line, &mut blocks);
+    }
+    blocks
+}
+
+enum ExtractState {
+    Outside,
+    InMermaid(String),
+    InOther,
+}
+
+fn advance(state: ExtractState, line: &str, blocks: &mut Vec<String>) -> ExtractState {
+    let trimmed = line.trim_start();
+    let is_fence = trimmed.starts_with("```");
+    match state {
+        ExtractState::Outside => {
+            if is_fence {
+                let info = trimmed[3..].trim();
+                if info == "mermaid" || info.starts_with("mermaid ") {
+                    ExtractState::InMermaid(String::new())
+                } else {
+                    ExtractState::InOther
+                }
+            } else {
+                ExtractState::Outside
+            }
+        }
+        ExtractState::InMermaid(mut buf) => {
+            if is_fence {
+                blocks.push(buf);
+                ExtractState::Outside
+            } else {
+                if !buf.is_empty() {
+                    buf.push('\n');
+                }
+                buf.push_str(line);
+                ExtractState::InMermaid(buf)
+            }
+        }
+        ExtractState::InOther => {
+            if is_fence {
+                ExtractState::Outside
+            } else {
+                ExtractState::InOther
+            }
+        }
+    }
+}
+
 fn temp_paths() -> (PathBuf, PathBuf) {
     let dir = std::env::temp_dir();
     let pid = std::process::id();
@@ -116,5 +177,78 @@ mod tests {
         let (a, _) = temp_paths();
         let (b, _) = temp_paths();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn extract_returns_empty_when_no_mermaid_blocks() {
+        let md = "# Title\n\nSome prose.\n\n```rust\nfn main() {}\n```\n";
+        assert!(extract_mermaid_blocks(md).is_empty());
+    }
+
+    #[test]
+    fn extract_picks_single_block() {
+        let md = "Intro.\n\n```mermaid\ngraph LR\n  A-->B\n```\n\nOutro.\n";
+        let blocks = extract_mermaid_blocks(md);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0], "graph LR\n  A-->B");
+    }
+
+    #[test]
+    fn extract_picks_multiple_blocks_in_order() {
+        let md = "\
+```mermaid
+graph LR
+  A-->B
+```
+
+Some text.
+
+```mermaid
+sequenceDiagram
+  Alice->>Bob: hi
+```
+";
+        let blocks = extract_mermaid_blocks(md);
+        assert_eq!(blocks.len(), 2);
+        assert!(blocks[0].contains("A-->B"));
+        assert!(blocks[1].contains("Alice->>Bob"));
+    }
+
+    #[test]
+    fn extract_skips_non_mermaid_fences_between_blocks() {
+        let md = "\
+```mermaid
+graph TD; X-->Y
+```
+
+```python
+print('not mermaid')
+```
+
+```mermaid
+graph TD; P-->Q
+```
+";
+        let blocks = extract_mermaid_blocks(md);
+        assert_eq!(blocks.len(), 2);
+        assert!(blocks[0].contains("X-->Y"));
+        assert!(blocks[1].contains("P-->Q"));
+        assert!(!blocks.iter().any(|b| b.contains("not mermaid")));
+    }
+
+    #[test]
+    fn extract_drops_unclosed_block() {
+        // Malformed: opening fence with no close. Expect zero blocks.
+        let md = "```mermaid\ngraph LR; A-->B\n";
+        assert!(extract_mermaid_blocks(md).is_empty());
+    }
+
+    #[test]
+    fn extract_accepts_info_string_with_extra_args() {
+        // Some markdown variants allow `mermaid {theme=dark}` etc. Treat any
+        // info string starting with "mermaid " as a mermaid block.
+        let md = "```mermaid theme=dark\ngraph LR; A-->B\n```\n";
+        let blocks = extract_mermaid_blocks(md);
+        assert_eq!(blocks.len(), 1);
     }
 }

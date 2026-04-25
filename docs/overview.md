@@ -5,9 +5,9 @@ Last updated: 2026-04-25
 ## What is blueprinter?
 
 **blueprinter** is a CLI tool for turning SVG diagrams into a hand-drawn, sketchy style.
-It accepts arbitrary SVG via `transform` and Mermaid (through external `mmdc`) via `render`,
-and produces stylized SVG, PNG, or WebP output. Markdown batch mode and draw.io direct input
-are planned follow-up phases.
+It accepts arbitrary SVG via `transform`, Mermaid (through external `mmdc`) via `render`,
+and Markdown documents containing one or more `mermaid` code blocks via `md`, and produces
+stylized SVG, PNG, or WebP output. draw.io direct input is a planned follow-up phase.
 
 The core idea: **do not recompute layout**. Instead, take an already-laid-out SVG
 and transform its visual appearance — strokes, fills, and filters — to mimic

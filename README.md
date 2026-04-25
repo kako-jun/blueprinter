@@ -16,6 +16,9 @@ cargo install blueprinter
 # Render a Mermaid diagram (requires mmdc on PATH)
 blueprinter render -i flowchart.mmd -o flowchart.svg --theme manga --seed 42
 
+# Batch-render every ```mermaid``` block in a Markdown file
+blueprinter md -i README.md -o ./diagrams --theme manga --format png --width 800
+
 # Transform an existing SVG with the default blueprint theme
 blueprinter transform -i input.svg -o output.svg --theme blueprint --seed 42
 
@@ -140,6 +143,7 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 - PNG output: `--format png`, with `--scale`, `--width`, `--height` options
 - WebP output: `--format webp` (lossless; same flags as PNG)
 - `render` command: Mermaid (`.mmd` / `.mermaid`) → mmdc → blueprinter pipeline. Supports the same theme / output-format / jitter / font flags as `transform`. Requires [mermaid-cli](https://github.com/mermaid-js/mermaid-cli): `npm install -g @mermaid-js/mermaid-cli`
+- `md` command: extracts every ` ```mermaid ` block from a Markdown file and writes them to an output directory as `<stem>-<n>.<ext>`. Other code fences are skipped.
 - Blueprint theme: complete with stroke/fill styling and background
 - **Sumi theme**: ink wash effect with grayscale colors and blur filters
 - **Watercolor theme**: pastel color palette with diffuse bleed effect
@@ -152,7 +156,6 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 - Shape jittering: `rect`, `line`, `polyline`, `path`, `circle`, `ellipse`, `polygon` (latter three via Bezier approximation)
 
 ### Planned
-- Markdown batch mode: extract every ` ```mermaid ` block from a `.md` file in one pass
 - More screentone variants and (eventually) speed-line layout for manga
 - Full theme styling for blueprint (currently basic)
 - Text outline conversion for advanced effects
