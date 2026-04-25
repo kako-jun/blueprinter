@@ -54,7 +54,7 @@
 ### Phase 4: テキスト・フォント（#4, #12）
 
 - [x] text のフォント差し替え + ジッター（`--font-family` override / 元フォント維持 / layout固定のまま subtle rotation,opacity jitter / raster export ではシステムフォントを自動ロード）
-- [ ] フォント選定と同梱（OFLライセンス確認）— 未着手。同梱したフォントを既定で参照することでクロスプラットフォーム再現性を高める拡張
+- [~] フォント選定と同梱（OFLライセンス確認）— `--font-dir <path>` で任意ディレクトリのフォントを fontdb に追加するインフラは実装済み (`fonts/README.md` に推奨フォントを記載)。binary 同梱 (`include_bytes!` + 既定参照) は未着手 — 実フォントファイルを repo にコミットする工程が必要
 
 ### Phase 5: 入出力拡張（#9〜#11）
 

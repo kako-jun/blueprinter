@@ -164,7 +164,17 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 
 ### Font Resolution
 
-When rasterizing to PNG / WebP, blueprinter loads the host's system fonts so any `font-family` referenced in the input SVG (e.g. `Arial`, `Helvetica`) resolves. If the requested face is not installed, resvg falls back to a generic family. Bundled default fonts for cross-platform reproducibility are planned.
+When rasterizing to PNG / WebP, blueprinter loads the host's system fonts so any `font-family` referenced in the input SVG (e.g. `Arial`, `Helvetica`) resolves. If the requested face is not installed, resvg falls back to a generic family.
+
+For cross-platform reproducibility, pass `--font-dir <path>` to load every `.ttf` / `.otf` in a directory into the rasterizer's font database. This is the recommended way to pin specific fonts:
+
+```bash
+blueprinter transform -i input.svg -o output.png --format png \
+  --font-dir ./fonts \
+  --font-family "Caveat"
+```
+
+The repo-level `fonts/` directory is reserved for future built-in bundling; see `fonts/README.md` for license-compatible OFL fonts that fit each theme.
 
 ### Known Limitations
 - XML declarations, comments, processing instructions, doctypes, and CDATA boundaries are not preserved

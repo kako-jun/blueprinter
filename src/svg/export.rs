@@ -1,12 +1,19 @@
 /// Export SVG to raster formats (PNG, WebP)
+use std::path::Path;
+
 use resvg::{tiny_skia, usvg};
 
 /// usvg defaults to an empty font database, so any `<text>` in the input is
 /// silently dropped from raster output. We load system fonts so common faces
-/// (Arial, Helvetica, the macOS / Linux defaults) resolve.
-fn options_with_fonts() -> usvg::Options<'static> {
+/// (Arial, Helvetica, the macOS / Linux defaults) resolve, and optionally
+/// load every TTF/OTF in a user-supplied directory on top so the output is
+/// reproducible across machines that have different system fonts.
+fn options_with_fonts(extra_dir: Option<&Path>) -> usvg::Options<'static> {
     let mut opt = usvg::Options::default();
     opt.fontdb_mut().load_system_fonts();
+    if let Some(dir) = extra_dir {
+        opt.fontdb_mut().load_fonts_dir(dir);
+    }
     opt
 }
 
@@ -14,8 +21,9 @@ pub fn export_to_png(
     svg: &str,
     dimensions: Option<(Option<u32>, Option<u32>)>,
     scale: f32,
+    font_dir: Option<&Path>,
 ) -> Result<Vec<u8>, String> {
-    let tree = usvg::Tree::from_str(svg, &options_with_fonts())
+    let tree = usvg::Tree::from_str(svg, &options_with_fonts(font_dir))
         .map_err(|e| format!("Failed to parse SVG: {e}"))?;
 
     let (width, height) = calculate_dimensions(&tree, dimensions, scale)?;
@@ -37,8 +45,9 @@ pub fn export_to_webp(
     svg: &str,
     dimensions: Option<(Option<u32>, Option<u32>)>,
     scale: f32,
+    font_dir: Option<&Path>,
 ) -> Result<Vec<u8>, String> {
-    let tree = usvg::Tree::from_str(svg, &options_with_fonts())
+    let tree = usvg::Tree::from_str(svg, &options_with_fonts(font_dir))
         .map_err(|e| format!("Failed to parse SVG: {e}"))?;
 
     let (width, height) = calculate_dimensions(&tree, dimensions, scale)?;
@@ -104,7 +113,7 @@ mod tests {
             <circle cx="50" cy="50" r="40" fill="red"/>
         </svg>"#;
 
-        let result = export_to_png(svg, None, 1.0);
+        let result = export_to_png(svg, None, 1.0, None);
         assert!(result.is_ok());
         let data = result.unwrap();
         assert!(!data.is_empty());
@@ -118,7 +127,7 @@ mod tests {
             <rect x="10" y="10" width="80" height="80" fill="blue"/>
         </svg>"#;
 
-        let result = export_to_png(svg, None, 2.0);
+        let result = export_to_png(svg, None, 2.0, None);
         assert!(result.is_ok());
     }
 
@@ -128,7 +137,7 @@ mod tests {
             <line x1="0" y1="0" x2="100" y2="100" stroke="black"/>
         </svg>"#;
 
-        let result = export_to_png(svg, Some((Some(200), Some(200))), 1.0);
+        let result = export_to_png(svg, Some((Some(200), Some(200))), 1.0, None);
         assert!(result.is_ok());
     }
 
@@ -138,7 +147,7 @@ mod tests {
             <rect x="10" y="10" width="80" height="80" fill="blue"/>
         </svg>"#;
 
-        let result = export_to_png(svg, Some((Some(200), None)), 1.0);
+        let result = export_to_png(svg, Some((Some(200), None)), 1.0, None);
         assert!(result.is_ok());
         // Aspect ratio should be preserved (200 x 200 for square SVG)
     }
@@ -149,7 +158,7 @@ mod tests {
             <rect x="10" y="10" width="180" height="80" fill="green"/>
         </svg>"#;
 
-        let result = export_to_png(svg, Some((None, Some(100))), 1.0);
+        let result = export_to_png(svg, Some((None, Some(100))), 1.0, None);
         assert!(result.is_ok());
         // Aspect ratio should be preserved (200 x 100 for 2:1 SVG)
     }
@@ -157,7 +166,7 @@ mod tests {
     #[test]
     fn test_export_invalid_svg() {
         let svg = "not valid svg";
-        let result = export_to_png(svg, None, 1.0);
+        let result = export_to_png(svg, None, 1.0, None);
         assert!(result.is_err());
     }
 
@@ -167,7 +176,7 @@ mod tests {
             <circle cx="50" cy="50" r="40" fill="red"/>
         </svg>"#;
 
-        let data = export_to_webp(svg, None, 1.0).expect("webp encode");
+        let data = export_to_webp(svg, None, 1.0, None).expect("webp encode");
         assert!(!data.is_empty());
         // RIFF container header + WEBP fourcc
         assert_eq!(&data[0..4], b"RIFF");
@@ -180,7 +189,7 @@ mod tests {
             <rect x="10" y="10" width="80" height="80" fill="blue"/>
         </svg>"#;
 
-        let data = export_to_webp(svg, None, 2.0).expect("webp encode");
+        let data = export_to_webp(svg, None, 2.0, None).expect("webp encode");
         assert_eq!(&data[0..4], b"RIFF");
     }
 
@@ -190,13 +199,14 @@ mod tests {
             <line x1="0" y1="0" x2="100" y2="100" stroke="black"/>
         </svg>"#;
 
-        let data = export_to_webp(svg, Some((Some(200), Some(200))), 1.0).expect("webp encode");
+        let data =
+            export_to_webp(svg, Some((Some(200), Some(200))), 1.0, None).expect("webp encode");
         assert_eq!(&data[0..4], b"RIFF");
     }
 
     #[test]
     fn test_export_to_webp_invalid_svg() {
-        assert!(export_to_webp("not valid svg", None, 1.0).is_err());
+        assert!(export_to_webp("not valid svg", None, 1.0, None).is_err());
     }
 
     /// Regression: usvg's default options use an empty font db, so any text in
@@ -211,7 +221,7 @@ mod tests {
             <text x="20" y="50" font-size="32" fill="#000000">Hello</text>
         </svg>"##;
 
-        let with_fonts = export_to_png(svg, None, 1.0).unwrap();
+        let with_fonts = export_to_png(svg, None, 1.0, None).unwrap();
 
         // Render the same SVG with a deliberately empty fontdb to capture the
         // "no glyphs" baseline.
@@ -231,5 +241,19 @@ mod tests {
             with_fonts, no_fonts,
             "system fonts must be loaded so text actually renders"
         );
+    }
+
+    #[test]
+    fn test_font_dir_arg_does_not_break_export() {
+        // Smoke test only — passing a non-existent dir must not crash; usvg's
+        // load_fonts_dir silently ignores missing paths. The image still renders
+        // (system fonts cover any required face).
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40">
+            <rect width="80" height="40" fill="#ffffff"/>
+            <text x="10" y="25" font-size="14" fill="#000000">Hi</text>
+        </svg>"##;
+        let bogus = Path::new("/this/path/does/not/exist/blueprinter-test");
+        let data = export_to_png(svg, None, 1.0, Some(bogus)).expect("export");
+        assert!(!data.is_empty());
     }
 }

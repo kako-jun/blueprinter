@@ -44,6 +44,12 @@ struct StyleArgs {
     /// Relative stroke-width variation applied per shape
     #[arg(long)]
     jitter_stroke_width_var: Option<f64>,
+
+    /// Extra font directory loaded into the rasterizer's fontdb (for raster
+    /// output). Useful for cross-platform reproducibility — drop the desired
+    /// TTF/OTF files in one folder and pass it here.
+    #[arg(long)]
+    font_dir: Option<String>,
 }
 
 /// Output options shared by `render` and `transform`.
@@ -304,18 +310,21 @@ fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArg
         .as_deref()
         .unwrap_or_else(|| infer_format_from_path(&out.output));
 
+    let font_dir = style.font_dir.as_deref().map(Path::new);
     let result = match output_format {
         "svg" => fs::write(&out.output, &transformed).map_err(|e| e.to_string()),
         "png" => export_to_png(
             &transformed,
             build_dimensions(out.width, out.height),
             out.scale,
+            font_dir,
         )
         .and_then(|bytes| fs::write(&out.output, bytes).map_err(|e| e.to_string())),
         "webp" => export_to_webp(
             &transformed,
             build_dimensions(out.width, out.height),
             out.scale,
+            font_dir,
         )
         .and_then(|bytes| fs::write(&out.output, bytes).map_err(|e| e.to_string())),
         _ => {
