@@ -18,6 +18,8 @@ rust-version = "1.78.0"
 clap = { version = "4.5", features = ["derive"] }
 roxmltree = "0.20"
 rand = "0.8"
+resvg = "0.42"
+tiny-skia = "0.11"
 
 [dev-dependencies]
 
