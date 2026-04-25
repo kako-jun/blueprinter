@@ -1,3 +1,4 @@
+pub mod chalk;
 pub mod export;
 pub mod filter;
 pub mod parser;

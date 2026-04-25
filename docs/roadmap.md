@@ -47,7 +47,7 @@
 - [x] Theme trait / enum 設計
 - [x] blueprint テーマ（デフォルト）実装
 - [ ] marker テーマ実装
-- [ ] chalk テーマ実装
+- [x] chalk テーマ実装（黒板緑 #1f2a25 背景・白主体パレット・chalk-dust filter）
 - [x] カラーパレット定義（blueprint: 背景 #1a3a5c、stroke #e8e8e8、fill none）
 - [x] fill / stroke のテーマ適用
 
