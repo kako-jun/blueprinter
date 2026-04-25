@@ -187,10 +187,13 @@ fn serialize_original_element(
         serialize_text_attrs(node, config, options, seed_state, &mut out);
     } else {
         for attr in node.attributes() {
-            out.push_str(&format_attr(
-                &qualified_attr_name(node, &attr),
-                attr.value(),
-            ));
+            let attr_name = qualified_attr_name(node, &attr);
+            let attr_value = match attr.name() {
+                "stroke" => apply_theme_stroke(options.theme, attr.value()),
+                "fill" => apply_theme_fill(options.theme, attr.value(), &tag),
+                _ => attr.value().to_string(),
+            };
+            out.push_str(&format_attr(&attr_name, &attr_value));
         }
     }
 
@@ -569,6 +572,7 @@ mod tests {
         let options = TransformOptions {
             seed: Some(42),
             font_family_override: None,
+            theme: Theme::None,
         };
 
         let result = transform_svg(svg, &config, &options).unwrap();
@@ -588,9 +592,86 @@ mod tests {
         let options = TransformOptions {
             seed: Some(42),
             font_family_override: Some("Georgia".to_string()),
+            ..Default::default()
         };
 
         let result = transform_svg(svg, &config, &options).unwrap();
         assert!(result.contains(r#"font-family="Georgia""#));
+    }
+
+    #[test]
+    fn test_blueprint_theme_stroke_color() {
+        // Use a non-jittered element (text) so we can test the stroke color transformation
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <g stroke="black"><circle cx="50" cy="50" r="20"/></g>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        assert!(result.contains(r##"stroke="#e8e8e8""##));
+        assert!(!result.contains(r##"stroke="black""##));
+    }
+
+    #[test]
+    fn test_blueprint_theme_fill_closed_shapes() {
+        // Use non-jittered shapes: circle and ellipse (rect would be jittered to path)
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" fill="blue"/>
+          <ellipse cx="70" cy="70" rx="20" ry="10" fill="green"/>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        // Non-jittered closed shapes should have fill="none" in blueprint theme
+        assert!(result.contains(r##"<circle cx="50" cy="50" r="20" fill="none""##));
+        assert!(result.contains(r##"<ellipse cx="70" cy="70" rx="20" ry="10" fill="none""##));
+    }
+
+    #[test]
+    fn test_blueprint_theme_line_fill_unchanged() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <line x1="0" y1="0" x2="100" y2="100" stroke="black" fill="red"/>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        // line elements should not have fill changed to "none" (they don't match the closed shapes)
+        assert!(result.contains(r##"fill="red""##));
+    }
+
+    #[test]
+    fn test_no_theme_preserves_colors() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <rect x="10" y="10" width="50" height="50" fill="red" stroke="blue"/>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::None,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        assert!(result.contains(r##"fill="red""##));
+        assert!(result.contains(r##"stroke="blue""##));
     }
 }
