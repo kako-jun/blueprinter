@@ -66,7 +66,7 @@
 ### Phase 6: 追加テーマ・図形（#13, #14）
 
 - [ ] sumi / watercolor テーマ（にじみエンジン）
-- [ ] circle / ellipse / polygon の揺らし変換
+- [x] circle / ellipse / polygon の揺らし変換
 - [ ] manga テーマ
 
 ### Phase 7: 公開準備（#15）

@@ -52,6 +52,7 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 - `transform` exposes `--jitter-amplitude`, `--jitter-frequency`, and `--jitter-stroke-width-var` for line-style tuning
 - `transform` can override text with `--font-family`, and otherwise keeps the original SVG font choice
 - `text` and `tspan` currently preserve their original `x`/`y`/`font-size` layout and only get subtle seeded `rotation` and `opacity` jitter; outline conversion is still planned
+- shapes jittered: `rect`, `line`, `polyline`, `path`, `circle`, `ellipse`, `polygon` (latter three converted to path via Bezier approximation)
 - XML declarations, comments, processing instructions, doctypes, and CDATA boundaries are not preserved yet
 - symbols and definitions under `defs`/`symbol`/`marker` are preserved without jitter, including shapes later referenced by `use`
 - `render` and `convert` are not implemented yet
