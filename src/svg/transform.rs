@@ -13,6 +13,8 @@ const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 pub enum Theme {
     None,
     Blueprint,
+    Sumi,
+    Watercolor,
 }
 
 impl Default for Theme {
@@ -225,7 +227,7 @@ fn serialize_original_element(
     out.push('>');
     if tag == "svg" {
         if !has_defs_child(&node) {
-            insert_svg_defs(&mut out, seed_state.unwrap_or(42));
+            insert_svg_defs(&mut out, seed_state.unwrap_or(42), options.theme);
         }
         if options.theme == Theme::Blueprint {
             if let Some(bg) = blueprint_background(&node) {
@@ -240,7 +242,7 @@ fn serialize_original_element(
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
         }
-        out.push_str(&bp_filter_defs_content(seed_state.unwrap_or(42)));
+        out.push_str(&bp_filter_defs_content(seed_state.unwrap_or(42), options.theme));
     } else {
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
@@ -331,22 +333,41 @@ fn has_defs_child(node: &Node<'_, '_>) -> bool {
         .any(|child| child.is_element() && child.tag_name().name() == "defs")
 }
 
-fn bp_filter_defs_content(seed: u64) -> String {
-    format!(
-        r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter><filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#,
-        seed = seed
-    )
+fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
+    let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#;
+    let text_grunge = format!("{}", text_grunge.replace("{seed}", &seed.to_string()));
+    
+    let subtle_bleed = r#"<filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#;
+
+    match theme {
+        Theme::Blueprint => format!("{}{}", text_grunge, subtle_bleed),
+        Theme::Sumi => {
+            let sumi_filter = crate::svg::sumi::sumi_filter_defs(seed);
+            format!("{}{}{}", text_grunge, subtle_bleed, sumi_filter)
+        }
+        Theme::Watercolor => {
+            let watercolor_filter = crate::svg::watercolor::watercolor_filter_defs(seed);
+            format!("{}{}{}", text_grunge, subtle_bleed, watercolor_filter)
+        }
+        Theme::None => format!("{}{}", text_grunge, subtle_bleed),
+    }
 }
 
-fn insert_svg_defs(out: &mut String, seed: u64) {
+fn insert_svg_defs(out: &mut String, seed: u64, theme: Theme) {
     out.push_str(r#"<defs>"#);
-    out.push_str(&bp_filter_defs_content(seed));
+    out.push_str(&bp_filter_defs_content(seed, theme));
     out.push_str(r#"</defs>"#);
 }
 
 fn apply_theme_stroke(theme: Theme, stroke: &str) -> String {
     match theme {
         Theme::Blueprint => "#e8e8e8".to_string(),
+        Theme::Sumi => crate::svg::sumi::apply_sumi_stroke(stroke),
+        Theme::Watercolor => {
+            // Watercolor stroke colors require randomization, but we can't access RNG here
+            // For now, use a fixed pastel color
+            "#FFB3BA".to_string()
+        }
         Theme::None => stroke.to_string(),
     }
 }
@@ -357,6 +378,15 @@ fn apply_theme_fill(theme: Theme, fill: &str, tag: &str) -> String {
             // For blueprint theme, closed shapes (rect, circle, etc) have no fill
             if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
                 "none".to_string()
+            } else {
+                fill.to_string()
+            }
+        }
+        Theme::Sumi => crate::svg::sumi::apply_sumi_fill(fill, tag),
+        Theme::Watercolor => {
+            // For watercolor theme, use lighter colors with transparency
+            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
+                "#FFB3BACC".to_string() // Soft red with alpha
             } else {
                 fill.to_string()
             }
@@ -386,11 +416,11 @@ fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
                             if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
                                 result.push_str("fill:none;");
                             } else {
-                                result.push_str(&format!("{}:{};", key, value));
+                                result.push_str(&format!("{}:{};" , key, value));
                             }
                         }
                         _ => {
-                            result.push_str(&format!("{}:{};", key, value));
+                            result.push_str(&format!("{}:{};" , key, value));
                         }
                     }
                 } else {
@@ -399,6 +429,76 @@ fn apply_theme_to_style(theme: Theme, style: &str, tag: &str) -> String {
                 }
             }
             // Remove trailing semicolon if present
+            if result.ends_with(';') {
+                result.pop();
+            }
+            result
+        }
+        Theme::Sumi => {
+            let mut result = String::new();
+            for part in style.split(';') {
+                let trimmed = part.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if let Some((key, value)) = trimmed.split_once(':') {
+                    let key = key.trim();
+                    let value = value.trim();
+                    match key {
+                        "stroke" => {
+                            result.push_str("stroke:rgba(50, 50, 50, 0.8);");
+                        }
+                        "fill" => {
+                            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
+                                result.push_str("fill:none;");
+                            } else {
+                                result.push_str(&format!("{}:{};" , key, value));
+                            }
+                        }
+                        _ => {
+                            result.push_str(&format!("{}:{};" , key, value));
+                        }
+                    }
+                } else {
+                    result.push_str(trimmed);
+                    result.push(';');
+                }
+            }
+            if result.ends_with(';') {
+                result.pop();
+            }
+            result
+        }
+        Theme::Watercolor => {
+            let mut result = String::new();
+            for part in style.split(';') {
+                let trimmed = part.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if let Some((key, value)) = trimmed.split_once(':') {
+                    let key = key.trim();
+                    let value = value.trim();
+                    match key {
+                        "stroke" => {
+                            result.push_str("stroke:#FFB3BA;");
+                        }
+                        "fill" => {
+                            if matches!(tag, "rect" | "circle" | "ellipse" | "polygon") {
+                                result.push_str("fill:#FFB3BACC;");
+                            } else {
+                                result.push_str(&format!("{}:{};" , key, value));
+                            }
+                        }
+                        _ => {
+                            result.push_str(&format!("{}:{};" , key, value));
+                        }
+                    }
+                } else {
+                    result.push_str(trimmed);
+                    result.push(';');
+                }
+            }
             if result.ends_with(';') {
                 result.pop();
             }
@@ -780,5 +880,71 @@ mod tests {
         let result = transform_svg(svg, &config, &options).unwrap();
         // circle should have default stroke added in blueprint theme
         assert!(result.contains(r##"stroke="#e8e8e8""##));
+    }
+
+
+    #[test]
+    fn test_sumi_theme_produces_grayscale() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" stroke="blue"/>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Sumi,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        // sumi theme should use grayscale color
+        assert!(result.contains("rgba(50, 50, 50, 0.8)"));
+    }
+
+    #[test]
+    fn test_watercolor_theme_produces_colors() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20" stroke="blue"/>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Watercolor,
+        };
+
+        let result = transform_svg(svg, &config, &options).unwrap();
+        // watercolor theme should use pastel color
+        assert!(result.contains("#FFB3BA"));
+    }
+
+    #[test]
+    fn test_both_themes_add_blur_filter() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+          <circle cx="50" cy="50" r="20"/>
+        </svg>"#;
+
+        let config = JitterConfig::default();
+
+        // Test sumi theme
+        let sumi_options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Sumi,
+        };
+        let sumi_result = transform_svg(svg, &config, &sumi_options).unwrap();
+        assert!(sumi_result.contains("feGaussianBlur"));
+        assert!(sumi_result.contains("sumi-ink-bleed"));
+
+        // Test watercolor theme
+        let watercolor_options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Watercolor,
+        };
+        let watercolor_result = transform_svg(svg, &config, &watercolor_options).unwrap();
+        assert!(watercolor_result.contains("feGaussianBlur"));
+        assert!(watercolor_result.contains("watercolor-bleed"));
     }
 }

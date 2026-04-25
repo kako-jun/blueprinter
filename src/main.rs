@@ -138,9 +138,11 @@ fn main() {
             };
             let theme_enum = match theme.as_str() {
                 "blueprint" => Theme::Blueprint,
+                "sumi" => Theme::Sumi,
+                "watercolor" => Theme::Watercolor,
                 "none" => Theme::None,
                 _ => {
-                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint` and `none` are supported.");
+                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint`, `sumi`, `watercolor`, and `none` are supported.");
                     std::process::exit(1);
                 }
             };
