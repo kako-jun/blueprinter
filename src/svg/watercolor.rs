@@ -85,19 +85,10 @@ pub fn watercolor_random_opacity<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     (base + variance).min(1.0)
 }
 
-/// Generates blur radius for watercolor effect.
-/// Returns a value between 4.0 and 8.0 pixels for more diffuse bleed.
-pub fn watercolor_blur_radius<R: Rng + ?Sized>(rng: &mut R) -> f32 {
-    4.0 + rng.gen::<f32>() * 4.0
-}
-
 /// Creates SVG filter definitions for watercolor theme.
 pub fn watercolor_filter_defs(_seed: u64) -> String {
-    let blur_radius = 6.0;
-    format!(
-        r#"<filter id="watercolor-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="{blur_radius}" result="blurred"/><feColorMatrix in="blurred" type="saturate" values="0.9" result="saturated"/><feOffset in="saturated" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.3"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#,
-        blur_radius = blur_radius
-    )
+    r#"<filter id="watercolor-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="6.0" result="blurred"/><feColorMatrix in="blurred" type="saturate" values="0.9" result="saturated"/><feOffset in="saturated" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.3"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#
+        .to_string()
 }
 
 #[cfg(test)]
@@ -136,16 +127,6 @@ mod tests {
             let opacity = watercolor_random_opacity(&mut rng);
             assert!(opacity >= 0.5);
             assert!(opacity <= 1.0);
-        }
-    }
-
-    #[test]
-    fn test_watercolor_blur_radius_in_range() {
-        let mut rng = StdRng::seed_from_u64(42);
-        for _ in 0..10 {
-            let radius = watercolor_blur_radius(&mut rng);
-            assert!(radius >= 4.0);
-            assert!(radius <= 8.0);
         }
     }
 

@@ -266,7 +266,7 @@ fn serialize_original_element(
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
         }
-        out.push_str(&bp_filter_defs_content(
+        out.push_str(&blueprinter_defs_content(
             seed_state.unwrap_or(42),
             options.theme,
         ));
@@ -360,7 +360,7 @@ fn has_defs_child(node: &Node<'_, '_>) -> bool {
         .any(|child| child.is_element() && child.tag_name().name() == "defs")
 }
 
-fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
+fn blueprinter_defs_content(seed: u64, theme: Theme) -> String {
     let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#
         .replace("{seed}", &seed.to_string());
 
@@ -375,7 +375,7 @@ fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
 
 fn insert_svg_defs(out: &mut String, seed: u64, theme: Theme) {
     out.push_str(r#"<defs>"#);
-    out.push_str(&bp_filter_defs_content(seed, theme));
+    out.push_str(&blueprinter_defs_content(seed, theme));
     out.push_str(r#"</defs>"#);
 }
 
