@@ -189,7 +189,7 @@ fn serialize_original_element(
 
     out.push('>');
     if tag == "svg" && !has_defs_child(&node) {
-        insert_svg_defs(&mut out);
+        insert_svg_defs(&mut out, seed_state.unwrap_or(42));
     }
     if tag == "text" {
         serialize_text_content(node, config, options, seed_state, &mut out);
@@ -198,7 +198,7 @@ fn serialize_original_element(
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
         }
-        out.push_str(bp_filter_defs_content());
+        out.push_str(&bp_filter_defs_content(seed_state.unwrap_or(42)));
     } else {
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
@@ -281,13 +281,16 @@ fn has_defs_child(node: &Node<'_, '_>) -> bool {
         .any(|child| child.is_element() && child.tag_name().name() == "defs")
 }
 
-fn bp_filter_defs_content() -> &'static str {
-    r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="42"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter><filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#
+fn bp_filter_defs_content(seed: u64) -> String {
+    format!(
+        r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter><filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#,
+        seed = seed
+    )
 }
 
-fn insert_svg_defs(out: &mut String) {
+fn insert_svg_defs(out: &mut String, seed: u64) {
     out.push_str(r#"<defs>"#);
-    out.push_str(bp_filter_defs_content());
+    out.push_str(&bp_filter_defs_content(seed));
     out.push_str(r#"</defs>"#);
 }
 
