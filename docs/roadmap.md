@@ -1,6 +1,6 @@
 # blueprinter ロードマップ
 
-最終更新: 2026-04-23
+最終更新: 2026-04-25
 
 ## 完了済み
 
@@ -44,12 +44,12 @@
 
 ### Phase 3: テーマシステム（#6〜#8）
 
-- [ ] Theme trait / enum 設計
-- [ ] blueprint テーマ（デフォルト）実装
+- [x] Theme trait / enum 設計
+- [x] blueprint テーマ（デフォルト）実装
 - [ ] marker テーマ実装
 - [ ] chalk テーマ実装
-- [ ] カラーパレット定義
-- [ ] fill / stroke のテーマ適用
+- [x] カラーパレット定義（blueprint: 背景 #1a3a5c、stroke #e8e8e8、fill none）
+- [x] fill / stroke のテーマ適用
 
 ### Phase 4: テキスト・フォント（#4, #12）
 
