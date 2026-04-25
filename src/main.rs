@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::fs;
 
 use blueprinter::jitter::JitterConfig;
-use blueprinter::svg::{transform_svg, TransformOptions};
+use blueprinter::svg::{transform_svg, TransformOptions, Theme};
 
 #[derive(Parser)]
 #[command(name = "blueprinter")]
@@ -115,10 +115,14 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            if theme != "blueprint" {
-                eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint` works.");
-                std::process::exit(1);
-            }
+            let theme_enum = match theme.as_str() {
+                "blueprint" => Theme::Blueprint,
+                "none" => Theme::None,
+                _ => {
+                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint` and `none` are supported.");
+                    std::process::exit(1);
+                }
+            };
             let config = jitter_config_from_flags(
                 jitter_amplitude,
                 jitter_frequency,
@@ -127,7 +131,7 @@ fn main() {
             let options = TransformOptions {
                 seed,
                 font_family_override: font_family,
-                theme: Default::default(),
+                theme: theme_enum,
             };
             let transformed = match transform_svg(&svg, &config, &options) {
                 Ok(svg) => svg,
