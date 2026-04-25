@@ -12,6 +12,7 @@ pub fn export_to_png(
     let (width, height) = calculate_dimensions(&tree, dimensions, scale)?;
 
     let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or("Failed to create pixmap")?;
+    pixmap.fill(tiny_skia::Color::WHITE);
 
     let render_ts = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, render_ts, &mut pixmap.as_mut());
@@ -32,6 +33,7 @@ pub fn export_to_webp(
     let (width, height) = calculate_dimensions(&tree, dimensions, scale)?;
 
     let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or("Failed to create pixmap")?;
+    pixmap.fill(tiny_skia::Color::WHITE);
 
     let render_ts = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, render_ts, &mut pixmap.as_mut());

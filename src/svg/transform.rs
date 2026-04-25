@@ -375,7 +375,7 @@ fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
     let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#;
     let text_grunge = format!("{}", text_grunge.replace("{seed}", &seed.to_string()));
 
-    let subtle_bleed = r#"<filter id="subtle-bleed" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur in="SourceGraphic" stdDeviation="0.3" result="blurred"/><feOffset in="blurred" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.15"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#;
+    let subtle_bleed = r#"<filter id="subtle-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur in="SourceGraphic" stdDeviation="3.0" result="blurred1"/><feOffset in="blurred1" dx="1.0" dy="1.0" result="offset1"/><feGaussianBlur in="offset1" stdDeviation="1.5" result="blurred2"/><feComponentTransfer in="blurred2" result="faded"><feFuncA type="linear" slope="0.4"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="darken"/></filter>"#;
 
     match theme {
         Theme::Blueprint => format!("{}{}", text_grunge, subtle_bleed),
