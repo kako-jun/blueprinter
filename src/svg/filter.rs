@@ -1,4 +1,4 @@
-/// Filter definitions for various themes.
+//! Filter definitions for various themes.
 
 /// Creates a Gaussian blur SVG filter definition.
 pub fn create_blur_filter(id: &str, radius: f32) -> String {
