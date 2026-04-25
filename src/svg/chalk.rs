@@ -30,7 +30,7 @@ impl ThemeStyle for ChalkStyle {
     fn filter_id(&self) -> &'static str {
         "chalk-dust"
     }
-    fn filter_defs(&self, seed: u64) -> Option<String> {
+    fn extra_defs(&self, seed: u64) -> Option<String> {
         Some(chalk_filter_defs(seed))
     }
     fn background(&self) -> Option<&'static str> {

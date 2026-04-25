@@ -27,7 +27,7 @@ impl ThemeStyle for SumiStyle {
     fn filter_id(&self) -> &'static str {
         "sumi-ink-bleed"
     }
-    fn filter_defs(&self, seed: u64) -> Option<String> {
+    fn extra_defs(&self, seed: u64) -> Option<String> {
         Some(sumi_filter_defs(seed))
     }
     fn extra_replicas(&self, tag: &str) -> usize {

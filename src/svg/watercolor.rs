@@ -31,7 +31,7 @@ impl ThemeStyle for WatercolorStyle {
     fn filter_id(&self) -> &'static str {
         "watercolor-bleed"
     }
-    fn filter_defs(&self, seed: u64) -> Option<String> {
+    fn extra_defs(&self, seed: u64) -> Option<String> {
         Some(watercolor_filter_defs(seed))
     }
     fn extra_replicas(&self, tag: &str) -> usize {

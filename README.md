@@ -52,7 +52,7 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 - `watercolor` — soft pigment bleeding and color mixing (now implemented)
 - `chalk` — white chalk on a blackboard, with dust/breakup filter (now implemented)
 - `marker` — bold neon marker strokes on a dark sketchbook (now implemented)
-- `manga` — planned screentone patterns and speed lines
+- `manga` — black ink lines on white paper with screentone fills (now implemented)
 
 ### Sumi Theme
 
@@ -80,6 +80,20 @@ blueprinter transform -i input.svg -o output.svg --theme watercolor --seed 42
 - Gaussian blur filter with 4–8px standard deviation for diffuse bleed
 - Color matrix saturation adjustment (90%) for soft, washed appearance
 - Semi-transparent fills (0.5–0.9) for transparency effect
+
+### Manga Theme
+
+The manga theme renders crisp black ink lines on white paper, with closed shapes filled by `<pattern>`-based screentones (sparse dots, dense dots, or diagonal lines) sampled per shape.
+
+```bash
+blueprinter transform -i input.svg -o output.svg --theme manga --seed 42
+```
+
+**Features:**
+- White paper background (#ffffff)
+- Pure black strokes (#000000) — no per-shape color randomization
+- Three SVG `<pattern>` screentones injected into `<defs>` and referenced via `fill="url(#manga-...)"`
+- Closed shapes get a screentone picked from `manga-dots-light`, `manga-dots-dark`, or `manga-lines-diag`
 
 ### Marker Theme
 
@@ -121,6 +135,7 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 - **Watercolor theme**: pastel color palette with diffuse bleed effect
 - **Chalk theme**: white chalk strokes on a chalkboard with dust/breakup filter
 - **Marker theme**: bold neon highlighter strokes on a dark navy background with halo
+- **Manga theme**: black ink lines on white paper with three screentone patterns for fills
 - Jitter controls: `--jitter-amplitude`, `--jitter-frequency`, `--jitter-stroke-width-var`
 - Text overrides: `--font-family` for font replacement
 - Reproducible output: `--seed` for deterministic jitter
@@ -128,7 +143,7 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 
 ### Planned
 - WebP output (currently PNG only)
-- Additional themes: `manga`
+- More screentone variants and (eventually) speed-line layout for manga
 - Full theme styling for blueprint (currently basic)
 - Text outline conversion for advanced effects
 - `render` command (Mermaid/draw.io → SVG → hand-drawn SVG)

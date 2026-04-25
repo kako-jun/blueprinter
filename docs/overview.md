@@ -98,7 +98,7 @@ Output SVG
 | `watercolor` | Implemented | Soft pastel palette, color-mixing bleed, and stroke replicas for diffuse pigment. |
 | `chalk` | Implemented | White (and pale color) chalk on a slate-green chalkboard, with a turbulence-driven dust filter that breaks each stroke up. |
 | `marker` | Implemented | Six-color neon highlighter palette on a dark navy sketchbook, with a Gaussian-blur halo behind each shape and translucent palette fills. |
-| `manga` | Planned | Screentone patterns and speed lines. |
+| `manga` | Implemented | Pure black ink on white paper, with three SVG `<pattern>` screentones (sparse dots / dense dots / diagonal lines) sampled per closed shape. Speed lines are out of scope (would require layout). |
 
 ## Technology Stack
 

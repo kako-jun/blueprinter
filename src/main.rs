@@ -29,7 +29,7 @@ enum Commands {
         #[arg(short, long)]
         output: String,
 
-        /// Theme name (blueprint, sumi, watercolor, chalk, marker, none)
+        /// Theme name (blueprint, sumi, watercolor, chalk, marker, manga, none)
         #[arg(short, long, default_value = "blueprint")]
         theme: String,
 
@@ -47,7 +47,7 @@ enum Commands {
         #[arg(short, long)]
         output: String,
 
-        /// Theme name (blueprint, sumi, watercolor, chalk, marker, none)
+        /// Theme name (blueprint, sumi, watercolor, chalk, marker, manga, none)
         #[arg(short, long, default_value = "blueprint")]
         theme: String,
 
@@ -142,9 +142,10 @@ fn main() {
                 "watercolor" => Theme::Watercolor,
                 "chalk" => Theme::Chalk,
                 "marker" => Theme::Marker,
+                "manga" => Theme::Manga,
                 "none" => Theme::None,
                 _ => {
-                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint`, `sumi`, `watercolor`, `chalk`, `marker`, and `none` are supported.");
+                    eprintln!("Error: theme `{theme}` is not implemented yet. Currently only `blueprint`, `sumi`, `watercolor`, `chalk`, `marker`, `manga`, and `none` are supported.");
                     std::process::exit(1);
                 }
             };

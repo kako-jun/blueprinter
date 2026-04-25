@@ -19,6 +19,7 @@ pub enum Theme {
     Watercolor,
     Chalk,
     Marker,
+    Manga,
 }
 
 #[derive(Debug, PartialEq)]
@@ -366,7 +367,7 @@ fn bp_filter_defs_content(seed: u64, theme: Theme) -> String {
     let subtle_bleed = r#"<filter id="subtle-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur in="SourceGraphic" stdDeviation="3.0" result="blurred1"/><feOffset in="blurred1" dx="1.0" dy="1.0" result="offset1"/><feGaussianBlur in="offset1" stdDeviation="1.5" result="blurred2"/><feComponentTransfer in="blurred2" result="faded"><feFuncA type="linear" slope="0.4"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="darken"/></filter>"#;
 
     let mut out = format!("{text_grunge}{subtle_bleed}");
-    if let Some(extra) = theme_style(theme).filter_defs(seed) {
+    if let Some(extra) = theme_style(theme).extra_defs(seed) {
         out.push_str(&extra);
     }
     out

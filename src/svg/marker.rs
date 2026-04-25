@@ -55,7 +55,7 @@ impl ThemeStyle for MarkerStyle {
     fn filter_id(&self) -> &'static str {
         "marker-glow"
     }
-    fn filter_defs(&self, _seed: u64) -> Option<String> {
+    fn extra_defs(&self, _seed: u64) -> Option<String> {
         Some(marker_filter_defs())
     }
     fn background(&self) -> Option<&'static str> {

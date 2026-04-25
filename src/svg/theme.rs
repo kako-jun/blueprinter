@@ -50,7 +50,9 @@ pub trait ThemeStyle: Sync {
         "subtle-bleed"
     }
 
-    fn filter_defs(&self, seed: u64) -> Option<String> {
+    /// SVG fragments to inject into the document's `<defs>` (filters,
+    /// patterns, gradients, etc.). `None` = nothing extra.
+    fn extra_defs(&self, seed: u64) -> Option<String> {
         let _ = seed;
         None
     }
@@ -99,6 +101,7 @@ static WATERCOLOR: crate::svg::watercolor::WatercolorStyle =
     crate::svg::watercolor::WatercolorStyle;
 static CHALK: crate::svg::chalk::ChalkStyle = crate::svg::chalk::ChalkStyle;
 static MARKER: crate::svg::marker::MarkerStyle = crate::svg::marker::MarkerStyle;
+static MANGA: crate::svg::manga::MangaStyle = crate::svg::manga::MangaStyle;
 
 pub fn theme_style(theme: Theme) -> &'static dyn ThemeStyle {
     match theme {
@@ -108,6 +111,7 @@ pub fn theme_style(theme: Theme) -> &'static dyn ThemeStyle {
         Theme::Watercolor => &WATERCOLOR,
         Theme::Chalk => &CHALK,
         Theme::Marker => &MARKER,
+        Theme::Manga => &MANGA,
     }
 }
 

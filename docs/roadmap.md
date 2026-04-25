@@ -67,7 +67,7 @@
 
 - [x] sumi / watercolor テーマ（にじみエンジン）— #13 完了
 - [x] circle / ellipse / polygon の揺らし変換
-- [ ] manga テーマ
+- [x] manga テーマ（黒インク + 白背景 + 3 種スクリーントーン pattern）
 
 ### Phase 7: 公開準備（#15）
 
