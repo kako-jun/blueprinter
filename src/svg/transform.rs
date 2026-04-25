@@ -187,6 +187,9 @@ fn serialize_original_element(
     }
 
     out.push('>');
+    if tag == "svg" {
+        insert_svg_defs(&mut out);
+    }
     if tag == "text" {
         serialize_text_content(node, config, options, seed_state, &mut out);
     } else {
@@ -266,6 +269,10 @@ fn should_jitter_text(node: &Node<'_, '_>) -> bool {
     matches!(node.tag_name().name(), "text" | "tspan")
 }
 
+fn insert_svg_defs(out: &mut String) {
+    out.push_str(r#"<defs><filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="42"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter></defs>"#);
+}
+
 fn serialize_text_content(
     node: Node<'_, '_>,
     config: &JitterConfig,
@@ -313,6 +320,8 @@ fn serialize_text_content(
                 out.push_str(&format!(r#" transform="rotate({:.2} {:.3} {:.3})""#, angle, x, y));
             }
         }
+
+        out.push_str(r#" filter="url(#text-grunge)""#);
 
         out.push('>');
         out.push_str(&escape_text(&ch.to_string()));
