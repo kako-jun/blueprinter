@@ -1,36 +1,47 @@
 # blueprinter Overview
 
-Last updated: 2026-04-25
+Last updated: 2026-04-27
 
 ## What is blueprinter?
 
-**blueprinter** is a CLI tool for turning SVG diagrams into a hand-drawn, sketchy style.
+**blueprinter** is a CLI tool for turning embedded visuals into a hand-drawn, sketchy style.
 It accepts arbitrary SVG via `transform`, Mermaid (through external `mmdc`) via `render`,
-and Markdown documents containing one or more `mermaid` code blocks via `md`, and produces
-stylized SVG, PNG, or WebP output. draw.io direct input is a planned follow-up phase.
+and Markdown documents containing one or more supported embedded visual blocks via `md`,
+and produces stylized SVG, PNG, or WebP output. Today the Markdown path handles `mermaid`
+blocks; the next planned expansion is `latex-render` blocks so lists, tables, and editorial
+layouts can be authored beside Markdown and rendered as static visual cards. draw.io direct
+input is a planned follow-up phase.
 
-The core idea: **do not recompute layout**. Instead, take an already-laid-out SVG
-and transform its visual appearance — strokes, fills, and filters — to mimic
-imperfection, human handwriting, and analog media.
+The core idea: **do not recompute layout unless a front-end format requires it**.
+When blueprinter receives SVG, it preserves the existing geometry and transforms
+visual appearance — strokes, fills, and filters — to mimic imperfection, human
+handwriting, and analog media. When blueprinter receives higher-level embedded
+formats through the Markdown pipeline, those formats are expected to compile into
+an SVG first, then flow through the same styling stages.
 
 ## Intended Use Case
 
 You have a clean, precise diagram made in Mermaid, draw.io, or another tool.
-You want to present it with personality: a blueprint draft, a chalkboard sketch,
-a watercolor painting, a manga panel. blueprinter applies the aesthetic filter
-without forcing you to redraw anything.
+Or you have a block of structured prose — a feature list, a comparison table,
+an editorial callout — that looks flat in plain Markdown. You want to present
+it with personality: a blueprint draft, a chalkboard sketch, a watercolor
+painting, a manga panel, or eventually a newspaper-like card authored in
+`latex-render`. blueprinter applies the aesthetic filter without forcing you
+to redraw anything.
 
 ## Design Philosophy
 
 ### Layout is Input, Appearance is Output
 
-blueprinter does not calculate positions, box sizes, or edge routes.
+blueprinter does not calculate positions, box sizes, or edge routes for raw SVG input.
 It assumes the input SVG already encodes a valid layout.
 Its job is purely visual transformation: replace straight strokes with wobbly ones,
 apply texture filters, swap color palettes, and add subtle random offsets.
 
 This constraint keeps the architecture simple and makes the tool composable:
-any SVG-producing tool can be a front-end.
+any SVG-producing tool can be a front-end. For higher-level embedded formats such
+as Mermaid or planned `latex-render`, layout belongs to the upstream compiler, not
+to blueprinter's styling stage.
 
 ### SVG-first Pipeline
 
@@ -69,10 +80,17 @@ This keeps the scope bounded and the codebase maintainable.
 ## Architecture
 
 ```
-Input SVG
+Input format
     │
-    ▼
-[ SVG loader ]
+    ├── SVG ───────────────► [ SVG loader ]
+    │
+    ├── Mermaid ───────────► [ mmdc ]
+    │                         │
+    │                         ▼
+    └── latex-render (planned)► [ TeX/DSL compiler ]
+                              │
+                              ▼
+                          Intermediate SVG
     │
     ▼
 [ Layout-preserving SVG filter ]
@@ -83,12 +101,15 @@ Input SVG
     ▼
 Intermediate SVG
     │
-    ▼
-[ Rasterizer (resvg) ]  ──optional──►  PNG / WebP (lossless)
+    ├──► Output SVG
     │
-    ▼
-Output SVG
+    └──► [ Rasterizer (resvg) ]  ──optional──►  PNG / WebP (lossless)
 ```
+
+For Markdown input, `md` acts as an orchestrator: find supported fenced blocks,
+render each block into SVG or raster output, place the assets in a sibling
+directory, and eventually emit a companion Markdown file with the original block
+replaced by image references.
 
 ## Themes
 

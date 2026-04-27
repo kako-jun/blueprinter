@@ -42,6 +42,17 @@
 
 ## 残タスク
 
+### Phase 5.5: Markdown 埋め込みビジュアル拡張（new）
+
+- [ ] `md` サブコマンドを「`mermaid` 専用バッチ」から「埋め込みビジュアル用パイプライン」へ拡張
+- [ ] ` ```latex-render ` ブロック検出を追加
+- [ ] `latex-render` ブロックを SVG/PNG 化する内部レンダラを実装
+- [ ] 生成物を `<stem>.assets/` に連番出力
+- [ ] 置換後 Markdown を `<stem>.generated.md` に出力
+- [ ] 将来 `--in-place` オプションを検討（初期実装では非破壊優先）
+- [ ] Blueprinter 向けの薄い TeX/DSL マクロ層を設計（見出し、箇条書き、表、引用、2カラム）
+- [ ] Mermaid と `latex-render` を同一テーマ・同一出力フラグで扱えるよう CLI 仕様を整理
+
 ### Phase 3: テーマシステム（#6〜#8）
 
 - [x] Theme trait / enum 設計
@@ -71,7 +82,10 @@
 
 ### Phase 7: 公開準備（#15）
 
+- [x] GitHub Releases workflow（tag `v*` で Linux/macOS/Windows artifact を生成）
+- [x] CHANGELOG.md 作成
 - [ ] crates.io 公開
+- [ ] `v0.1.0` tag + GitHub Release 作成
+- [ ] `cargo publish`
 - [ ] Homebrew formula 検討
 - [ ] 宣伝記事作成
-- [ ] README にインストール方法・使用例を追加
