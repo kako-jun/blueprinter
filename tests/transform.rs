@@ -441,7 +441,7 @@ fn test_themes_without_bleed_pass_return_none() {
 /// の id と、それを参照する filter="url(#subtle-bleed)" が全テーマで出力に
 /// 残っていないことを担保する。
 #[test]
-fn test_subtle_bleed_filter_def_is_removed_for_all_themes() {
+fn test_legacy_bleed_filter_defs_removed_for_all_themes() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
         <circle cx="50" cy="50" r="20" stroke="black"/>
     </svg>"#;

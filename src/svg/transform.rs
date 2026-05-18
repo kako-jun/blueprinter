@@ -10,6 +10,12 @@ const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
 const XLINK_NS: &str = "http://www.w3.org/1999/xlink";
 
+/// Fallback seed used when the caller passes `seed: None`. Centralized so the
+/// SVG-defs path, the aquarelle bleed pass, and the CLI's `--seed` fallback
+/// stay in lockstep — changing the default in one place must not silently
+/// diverge from the others.
+pub const DEFAULT_SEED: u64 = 42;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     #[default]
@@ -253,7 +259,7 @@ fn serialize_original_element(
     out.push('>');
     if tag == "svg" {
         if !has_defs_child(&node) {
-            insert_svg_defs(&mut out, seed_state.unwrap_or(42), options.theme);
+            insert_svg_defs(&mut out, seed_state.unwrap_or(DEFAULT_SEED), options.theme);
         }
         if let Some(color) = style.background() {
             if let Some(bg) = theme_background(&node, color) {
@@ -269,7 +275,7 @@ fn serialize_original_element(
             out.push_str(&serialize_node(child, config, options, seed_state));
         }
         out.push_str(&blueprinter_defs_content(
-            seed_state.unwrap_or(42),
+            seed_state.unwrap_or(DEFAULT_SEED),
             options.theme,
         ));
     } else {

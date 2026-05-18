@@ -6,6 +6,7 @@ use blueprinter::jitter::JitterConfig;
 use blueprinter::render::{extract_mermaid_blocks, mermaid_to_svg, RenderError};
 use blueprinter::svg::{
     export_to_png, export_to_webp, theme_style, transform_svg, Theme, TransformOptions,
+    DEFAULT_SEED,
 };
 
 #[derive(Parser)]
@@ -319,7 +320,7 @@ fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArg
     let bleed_params = theme_style(theme_enum).bleed_pass_params();
     // Seed forwarded to the aquarelle raster bleed pass; falls back to a
     // fixed value so omitting --seed still produces a deterministic bleed.
-    let bleed_seed = style.seed.unwrap_or(42);
+    let bleed_seed = style.seed.unwrap_or(DEFAULT_SEED);
     let result = match output_format {
         "svg" => fs::write(&out.output, &transformed).map_err(|e| e.to_string()),
         "png" => export_to_png(

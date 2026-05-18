@@ -97,7 +97,6 @@ blueprinter transform -i input.svg -o output.png --theme watercolor --seed 42
 **Features:**
 - Pastel color palette (#FFB3BA, #FFDFBA, #FFFFBA, #BAFFC9, #BAE1FF, #E0BBE4, #FFC7F5)
 - Raster bleed via the aquarelle compositor (`radius=6.0`, `intensity=0.5`, `halo=0.4`) for diffuse pigment spread and soft halo
-- Color matrix saturation adjustment (90%) for soft, washed appearance
 - Semi-transparent fills (0.5–0.9) for transparency effect
 
 ### Manga Theme

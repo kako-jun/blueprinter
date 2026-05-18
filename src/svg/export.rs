@@ -72,6 +72,9 @@ pub fn export_to_webp(
     resvg::render(&tree, render_ts, &mut pixmap.as_mut());
 
     if let Some(params) = bleed_params {
+        // See export_to_png for the Pixmap-sharing rationale: aquarelle
+        // re-exports tiny-skia, so the bleed pass operates on the same
+        // pixmap type resvg just wrote into.
         render_aquarelle_bleed_pass(&mut pixmap, params, seed);
     }
 
@@ -329,6 +332,27 @@ mod tests {
         .expect("bleed webp");
 
         assert_ne!(without, with);
+    }
+
+    #[test]
+    fn test_export_to_webp_bleed_deterministic_same_seed() {
+        // Mirror of the PNG determinism test: same SVG + same params + same
+        // seed must produce byte-identical WebP. WebP encoding is lossless
+        // here, so any drift would point at non-determinism in the bleed pass
+        // itself rather than the encoder.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50">
+            <circle cx="25" cy="25" r="15" fill="black"/>
+        </svg>"#;
+
+        let params = AquarelleBleedParams {
+            radius: 6.0,
+            intensity: 0.5,
+            halo: 0.4,
+        };
+        let a = export_to_webp(svg, None, 1.0, None, Some(params), 12345).expect("a");
+        let b = export_to_webp(svg, None, 1.0, None, Some(params), 12345).expect("b");
+
+        assert_eq!(a, b);
     }
 
     #[test]

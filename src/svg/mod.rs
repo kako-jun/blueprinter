@@ -13,4 +13,4 @@ pub use export::{export_to_png, export_to_webp};
 pub use parser::parse_svg;
 pub use primitive::Primitive;
 pub use theme::{theme_style, ThemeStyle};
-pub use transform::{transform_svg, Theme, TransformOptions};
+pub use transform::{transform_svg, Theme, TransformOptions, DEFAULT_SEED};
