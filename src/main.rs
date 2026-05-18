@@ -11,7 +11,8 @@ use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, Tran
 #[command(version)]
 #[command(about = "Hand-drawn style diagram renderer CLI")]
 #[command(
-    long_about = "Turn SVG into sketchy SVG. Mermaid via mmdc and draw.io direct input are planned."
+    long_about = "Render structured diagrams (Mermaid, draw.io-planned) as hand-drawn raster images. \
+PNG/WebP are the primary outputs; SVG output remains available for debugging the pipeline."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -59,7 +60,9 @@ struct OutputArgs {
     #[arg(short, long)]
     output: String,
 
-    /// Output format (svg, png, webp). Inferred from output extension if omitted.
+    /// Output format (png, webp, svg). Inferred from output extension if
+    /// omitted; defaults to png when the extension is unrecognised. svg is
+    /// debug-only.
     #[arg(long)]
     format: Option<String>,
 
@@ -126,8 +129,8 @@ enum Commands {
         #[command(flatten)]
         style: StyleArgs,
 
-        /// Output format (svg, png, webp). Default: svg.
-        #[arg(long, default_value = "svg")]
+        /// Output format (png, webp, svg). Default: png. svg is debug-only.
+        #[arg(long, default_value = "png")]
         format: String,
 
         /// Scale factor for raster output (default: 1.0)
@@ -382,7 +385,7 @@ fn infer_format_from_path(path: &str) -> &'static str {
         Some("png") => "png",
         Some("webp") => "webp",
         Some("svg") => "svg",
-        _ => "svg",
+        _ => "png",
     }
 }
 
@@ -525,7 +528,7 @@ mod tests {
 
     #[test]
     fn infer_format_from_path_default() {
-        assert_eq!(infer_format_from_path("output.txt"), "svg");
+        assert_eq!(infer_format_from_path("output.txt"), "png");
     }
 
     #[test]
