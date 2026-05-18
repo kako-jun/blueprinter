@@ -46,6 +46,8 @@ pub fn flatten_text_to_paths(svg: &str, font_dir: Option<&Path>) -> Result<Strin
 
     // WriteOptions::default() は preserve_text = false なので、`<text>` は
     // glyph path に展開された状態でシリアライズされる。
+    // usvg::Tree::to_string は usvg 0.42 では infallible (String を直接返す)。
+    // この関数の Err 経路は上の Tree::from_str のみ。
     Ok(tree.to_string(&usvg::WriteOptions::default()))
 }
 

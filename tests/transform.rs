@@ -323,7 +323,8 @@ fn transform_svg_circle_ellipse_polygon_different_with_different_seed() {
 
 // #4: 旧 text 仕様 (rotation 累積, x/y/font-size 保持, opacity ジッター, tspan 展開)
 // は廃止。text は usvg で glyph path に展開され、既存 path jitter が適用される。
-// 新仕様の text→path 統合テストは tests/text_to_path_integration.rs に置く。
+// 新仕様のテストは src/svg/text_to_path.rs の単体テストと、本ファイル末尾の
+// text-flatten 異常系・closed-path fill 系テスト群に配置している。
 
 /// Sumi/Watercolor の bleed_pass_params のマジックナンバーを仕様として固定する。
 /// この値を緩く変えると、aquarelle ラスター pass の見た目が黙って変わるので
@@ -414,7 +415,8 @@ fn test_legacy_bleed_filter_defs_removed_for_all_themes() {
 
 /// #4 廃止: 旧仕様では <text>/<tspan> に text-grunge filter が付与されていたが、
 /// usvg で glyph path に展開する方式に置き換わったため、tspan も text-grunge も
-/// 出力には現れない。代替検証は tests/text_to_path_integration.rs を参照。
+/// 出力には現れない。代替検証は src/svg/text_to_path.rs の単体テストおよび
+/// 本ファイル末尾の text-flatten 系テスト群を参照。
 #[test]
 fn test_text_grunge_filter_is_removed_for_all_themes() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">
