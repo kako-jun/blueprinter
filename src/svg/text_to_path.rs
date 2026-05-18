@@ -21,7 +21,20 @@ use resvg::usvg;
 ///
 /// `font_dir` には追加のフォントディレクトリを指定できる。`None` の場合は
 /// system fontdb のみを利用する。
+///
+/// 入力 SVG に `<text` 要素が含まれない場合は **入力をそのまま返す**。
+/// usvg は SVG をパースする際に rect/circle/ellipse/polygon を path に
+/// 正規化したり、色名を hex に展開したりするので、text が無いのに usvg を
+/// 通してしまうと後段の shape-tag ベースの theme 判定（is_closed_shape 等）が
+/// 崩れてしまう。text が無いケースを早期 return することで、既存の SVG
+/// パイプラインへの影響を text を含むドキュメントだけに局所化する。
 pub fn flatten_text_to_paths(svg: &str, font_dir: Option<&Path>) -> Result<String, String> {
+    // 安価な substring 判定で text が無いことが分かれば usvg をスキップする。
+    // 厳密な XML パースは後段の roxmltree-based transform_svg に委ねる。
+    if !contains_text_element(svg) {
+        return Ok(svg.to_string());
+    }
+
     let mut options = usvg::Options::default();
     options.fontdb_mut().load_system_fonts();
     if let Some(dir) = font_dir {
@@ -34,6 +47,35 @@ pub fn flatten_text_to_paths(svg: &str, font_dir: Option<&Path>) -> Result<Strin
     // WriteOptions::default() は preserve_text = false なので、`<text>` は
     // glyph path に展開された状態でシリアライズされる。
     Ok(tree.to_string(&usvg::WriteOptions::default()))
+}
+
+/// `<text` で始まる開始タグが含まれるかを判定する。
+///
+/// XML コメント・CDATA 内の `<text` も誤検出しうるが、その場合は usvg を
+/// 通すだけで挙動が壊れることはない（usvg 側で何もしないか正規化されるだけ）。
+fn contains_text_element(svg: &str) -> bool {
+    // ` <text ` または `<text>` または `<text\n` のように、tag を続ける文字
+    // （空白・改行・>・/）が直後に来る場合のみ「text 要素」と判定する。
+    // 単に文字列 "text" が含まれているだけのケース（attribute 名等）を除外。
+    let bytes = svg.as_bytes();
+    let needle = b"<text";
+    let mut i = 0;
+    while i + needle.len() < bytes.len() {
+        if &bytes[i..i + needle.len()] == needle {
+            let next = bytes[i + needle.len()];
+            if next == b' '
+                || next == b'>'
+                || next == b'\t'
+                || next == b'\n'
+                || next == b'\r'
+                || next == b'/'
+            {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -50,27 +92,64 @@ mod tests {
         let out = flatten_text_to_paths(svg, None).expect("flatten");
         // text element must not survive in the output (either expanded to paths
         // or, when no font matches, dropped silently by usvg).
-        assert!(!out.contains("<text "), "text element should be removed: {out}");
+        assert!(
+            !out.contains("<text "),
+            "text element should be removed: {out}"
+        );
     }
 
     #[test]
-    fn flatten_text_to_paths_returns_err_on_invalid_svg() {
-        let result = flatten_text_to_paths("not valid svg", None);
-        assert!(result.is_err());
+    fn flatten_text_to_paths_returns_err_on_invalid_svg_with_text() {
+        // text を含むため early-return がスキップされ、usvg のパース失敗が
+        // 表面化する。text を含まない不正 SVG は (text 用処理が走らないので)
+        // そのまま pass-through される — それは後段 transform_svg の roxmltree が
+        // 拾うので本ヘルパの責務外。
+        let result = flatten_text_to_paths("<text>broken without root", None);
+        assert!(result.is_err(), "got: {result:?}");
     }
 
     #[test]
-    fn flatten_text_to_paths_preserves_non_text_elements() {
-        // Shapes other than <text> must round-trip through usvg without being
-        // lost — they're the canvas the glyph paths get composed onto.
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+    fn flatten_text_to_paths_passes_text_free_svg_through_unchanged() {
+        // text を含まない SVG は usvg を通さず原文をそのまま返す。usvg は
+        // rect/circle 等を path に正規化したり色名を hex に展開したりするので、
+        // text が無いのに正規化が走ると後段の theme 判定が壊れる。
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="50" cy="50" r="20" fill="blue"/></svg>"#;
+        let out = flatten_text_to_paths(svg, None).expect("flatten");
+        assert_eq!(out, svg);
+    }
+
+    #[test]
+    fn contains_text_element_matches_real_text_tags() {
+        assert!(contains_text_element("<text>foo</text>"));
+        assert!(contains_text_element("<text x=\"0\">foo</text>"));
+        assert!(contains_text_element("<text\nx=\"0\">foo</text>"));
+        assert!(contains_text_element("<text/>"));
+    }
+
+    #[test]
+    fn contains_text_element_ignores_attribute_substrings() {
+        // "text" がアトリビュート名や値に含まれていても、開始タグでなければ false
+        assert!(!contains_text_element(r#"<rect id="textbox"/>"#));
+        assert!(!contains_text_element(r#"<g class="text-layer"/>"#));
+        assert!(!contains_text_element("<svg></svg>"));
+    }
+
+    #[test]
+    fn flatten_text_to_paths_preserves_non_text_elements_alongside_text() {
+        // text と一緒に居る shape は usvg で正規化される（rect/circle が path に
+        // 展開されるなど）。これは usvg の仕様で、glyph path 化と引き換えに
+        // 受け入れる canonicalization。最低限、何らかの path data が
+        // 出力に含まれていること（glyph or shape）だけを確認する。
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">
             <rect x="10" y="10" width="30" height="20" fill="blue"/>
-            <circle cx="50" cy="50" r="20" fill="red"/>
+            <text x="50" y="50" font-size="14">Hi</text>
         </svg>"##;
 
         let out = flatten_text_to_paths(svg, None).expect("flatten");
-        // usvg may normalize rect/circle into <path>, but the visual primitives
-        // must still produce some path data in the output.
-        assert!(out.contains("<path") || out.contains("<rect") || out.contains("<circle"));
+        assert!(
+            out.contains("<path"),
+            "should contain at least one path: {out}"
+        );
+        assert!(!out.contains("<text "), "text should be flattened: {out}");
     }
 }

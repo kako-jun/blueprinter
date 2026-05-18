@@ -303,7 +303,8 @@ fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArg
         font_family_override: style.font_family.clone(),
         theme: theme_enum,
     };
-    let transformed = match transform_svg(svg, &config, &options) {
+    let font_dir = style.font_dir.as_deref().map(Path::new);
+    let transformed = match transform_svg(svg, &config, &options, font_dir) {
         Ok(svg) => svg,
         Err(err) => {
             eprintln!("Error: failed to transform SVG: {err}");
@@ -315,8 +316,6 @@ fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArg
         .format
         .as_deref()
         .unwrap_or_else(|| infer_format_from_path(&out.output));
-
-    let font_dir = style.font_dir.as_deref().map(Path::new);
     let bleed_params = theme_style(theme_enum).bleed_pass_params();
     // Seed forwarded to the aquarelle raster bleed pass; falls back to a
     // fixed value so omitting --seed still produces a deterministic bleed.

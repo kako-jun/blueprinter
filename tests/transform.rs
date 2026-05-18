@@ -14,23 +14,25 @@ fn options(seed: u64) -> TransformOptions {
 #[test]
 fn transform_svg_preserves_root_and_writes_jittered_paths() {
     let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
-    let transformed = transform_svg(&svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(&svg, &JitterConfig::default(), &options(42), None).unwrap();
 
-    assert!(transformed
-        .starts_with(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">"#));
+    // #4 で text を含む SVG は usvg で path に正規化される。root の <svg> 開始タグと
+    // jittered path data だけ確認する（usvg は width/height 属性順序を変えるため
+    // starts_with は使わない）。
+    assert!(transformed.contains("<svg"));
+    assert!(transformed.contains(r#"xmlns="http://www.w3.org/2000/svg""#));
     assert!(transformed.contains("<path"));
-    assert!(transformed.contains("<text x="));
-    assert!(transformed.contains("<g>"));
-    // circle elements are now converted to paths with jitter, so they no longer appear as <circle
     assert!(transformed.contains("d=\"M"));
+    // text 要素は glyph path に展開されるので、もう <text> としては存在しない
+    assert!(!transformed.contains("<text "));
 }
 
 #[test]
 fn transform_svg_with_same_seed_is_reproducible() {
     let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
     let config = JitterConfig::default();
-    let out1 = transform_svg(&svg, &config, &options(42)).unwrap();
-    let out2 = transform_svg(&svg, &config, &options(42)).unwrap();
+    let out1 = transform_svg(&svg, &config, &options(42), None).unwrap();
+    let out2 = transform_svg(&svg, &config, &options(42), None).unwrap();
     assert_eq!(out1, out2);
 }
 
@@ -38,8 +40,8 @@ fn transform_svg_with_same_seed_is_reproducible() {
 fn transform_svg_with_different_seed_changes_jitter() {
     let svg = fs::read_to_string("tests/fixtures/simple.svg").unwrap();
     let config = JitterConfig::default();
-    let out1 = transform_svg(&svg, &config, &options(42)).unwrap();
-    let out2 = transform_svg(&svg, &config, &options(43)).unwrap();
+    let out1 = transform_svg(&svg, &config, &options(42), None).unwrap();
+    let out2 = transform_svg(&svg, &config, &options(43), None).unwrap();
     assert_ne!(out1, out2);
 }
 
@@ -51,8 +53,8 @@ fn transform_svg_with_same_seed_and_custom_config_is_reproducible() {
         frequency: 7.0,
         stroke_width_var: 0.4,
     };
-    let out1 = transform_svg(&svg, &config, &options(42)).unwrap();
-    let out2 = transform_svg(&svg, &config, &options(42)).unwrap();
+    let out1 = transform_svg(&svg, &config, &options(42), None).unwrap();
+    let out2 = transform_svg(&svg, &config, &options(42), None).unwrap();
     assert_eq!(out1, out2);
 }
 
@@ -70,8 +72,8 @@ fn transform_svg_changes_when_jitter_config_changes() {
         stroke_width_var: 0.6,
     };
 
-    let subtle_out = transform_svg(&svg, &subtle, &options(42)).unwrap();
-    let rough_out = transform_svg(&svg, &rough, &options(42)).unwrap();
+    let subtle_out = transform_svg(&svg, &subtle, &options(42), None).unwrap();
+    let rough_out = transform_svg(&svg, &rough, &options(42), None).unwrap();
 
     assert_ne!(subtle_out, rough_out);
 }
@@ -85,13 +87,15 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
     <line id="edge" class="wire" x1="0" y1="0" x2="5" y2="5" transform="scale(2)" style="stroke:red"/>
   </g>
 </svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
-    // defs now includes blueprinter filter content, so check components separately
+    // #4: text を含まないので usvg 経由の正規化はかからず、blueprinter の
+    // roxmltree pipeline が原文の構造をほぼ温存する。text-grunge filter は廃止された
+    // ので defs には何も追加されない（テーマ別 extra_defs のみが入る）。
     assert!(transformed.contains(
         r##"<linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient>"##
     ));
-    assert!(transformed.contains("<filter id=\"text-grunge\""));
+    assert!(!transformed.contains("text-grunge"));
     assert!(transformed.contains(r##"<g id="layer1" class="node" transform="translate(1 2)""##));
     assert!(transformed.contains(
         r#"<rect id="rounded" x="1" y="2" width="3" height="4" rx="1" style="opacity:0.5" />"#
@@ -103,25 +107,22 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
     assert!(transformed.contains(r#"style="stroke:red""#));
 }
 
-#[test]
-fn transform_svg_escapes_decoded_text_and_attributes() {
-    let svg =
-        r#"<svg xmlns="http://www.w3.org/2000/svg"><text title="A &amp; B">A &amp; B</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-
-    assert!(transformed.contains(r#"title="A &amp; B""#));
-    // text は tspan で分割されるため、各文字が別の tspan に入る
-    assert!(transformed.contains(">A</tspan>"));
-    assert!(transformed.contains(">&amp;</tspan>"));
-    assert!(transformed.contains(">B</tspan>"));
-    assert!(!transformed.contains(">A & B</text>"));
-}
+// #4 で <text>/<tspan> は usvg で glyph path に展開されるため、テキスト要素や
+// tspan を直接 assert する以下の旧テストは削除した:
+//   - transform_svg_escapes_decoded_text_and_attributes
+//     (tspan が出ない、text content は glyph path に展開される)
+//   - transform_svg_preserves_existing_font_family_when_override_is_absent
+//   - transform_svg_keeps_text_layout_and_only_jitters_rotation_and_opacity
+//   - transform_svg_appends_rotation_to_existing_text_transform
+//   - transform_svg_preserves_text_position_and_font_size_exactly
+//   - transform_svg_jitters_existing_text_opacity
+//   - test_text_filter_only_text_grunge (text-grunge filter 廃止)
 
 #[test]
 fn transform_svg_handles_compact_path_data() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0-1L2.5.5Z" stroke="black"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains("<path"));
     assert!(transformed.contains(" L "));
@@ -139,6 +140,7 @@ fn transform_svg_normalizes_relative_path_commands_to_absolute() {
             stroke_width_var: 0.0,
         },
         &options(42),
+        None,
     )
     .unwrap();
 
@@ -158,8 +160,8 @@ fn transform_svg_relative_and_absolute_paths_match_without_noise() {
     };
 
     assert_eq!(
-        transform_svg(relative, &config, &options(42)).unwrap(),
-        transform_svg(absolute, &config, &options(42)).unwrap()
+        transform_svg(relative, &config, &options(42), None).unwrap(),
+        transform_svg(absolute, &config, &options(42), None).unwrap()
     );
 }
 
@@ -167,7 +169,7 @@ fn transform_svg_relative_and_absolute_paths_match_without_noise() {
 fn transform_svg_leaves_malformed_path_data_unchanged() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M 0 0 L 1" stroke="black"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains(r#"<path d="M 0 0 L 1" stroke="black" />"#));
 }
@@ -176,7 +178,7 @@ fn transform_svg_leaves_malformed_path_data_unchanged() {
 fn transform_svg_leaves_degenerate_polyline_unchanged() {
     let svg =
         r#"<svg xmlns="http://www.w3.org/2000/svg"><polyline points="0 0" stroke="black"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains(r#"<polyline points="0 0" stroke="black" />"#));
 }
@@ -184,7 +186,7 @@ fn transform_svg_leaves_degenerate_polyline_unchanged() {
 #[test]
 fn transform_svg_applies_seeded_stroke_width_jitter() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><line x1="0" y1="0" x2="10" y2="0" stroke-width="2"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains("stroke-width="));
     assert!(!transformed.contains(r#"stroke-width="2""#));
@@ -201,6 +203,7 @@ fn transform_svg_can_disable_stroke_width_variation() {
             stroke_width_var: 0.0,
         },
         &options(42),
+        None,
     )
     .unwrap();
 
@@ -210,7 +213,7 @@ fn transform_svg_can_disable_stroke_width_variation() {
 #[test]
 fn transform_svg_preserves_namespace_prefixes() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><path id="icon" d="M0 0 L1 1"/></defs><use xlink:href="#icon"/></svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains(r#"xmlns:xlink="http://www.w3.org/1999/xlink""#));
     assert!(transformed.contains(r##"xlink:href="#icon""##));
@@ -219,7 +222,7 @@ fn transform_svg_preserves_namespace_prefixes() {
 #[test]
 fn transform_svg_preserves_nested_namespace_declarations() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><g xmlns:bp="https://example.com/bp"><bp:meta bp:key="edge"/><line x1="0" y1="0" x2="1" y2="1"/></g></svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains(r#"xmlns:bp="https://example.com/bp""#));
     assert!(transformed.contains(r#"<bp:meta bp:key="edge" />"#));
@@ -228,7 +231,7 @@ fn transform_svg_preserves_nested_namespace_declarations() {
 #[test]
 fn transform_svg_does_not_jitter_non_svg_namespace_elements() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:bp="https://example.com/bp"><bp:path d="M0 0 L1 1" bp:key="edge"/><line x1="0" y1="0" x2="1" y2="1"/></svg>"##;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains(r##"<bp:path d="M0 0 L1 1" bp:key="edge" />"##));
     assert!(transformed.contains("<path"));
@@ -237,75 +240,25 @@ fn transform_svg_does_not_jitter_non_svg_namespace_elements() {
 #[test]
 fn transform_svg_does_not_jitter_defs_content() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="clip"><path d="M0 0 L1 1"/></clipPath></defs><path d="M0 0 L5 5"/></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(transformed.contains(r#"<path d="M0 0 L1 1" />"#));
     assert!(!transformed.contains(r#"<path d="M0 0 L5 5" />"#));
 }
 
-#[test]
-fn transform_svg_preserves_existing_font_family_when_override_is_absent() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-family="Arial" font-size="12">Hello</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-
-    assert!(transformed.contains(r#"font-family="Arial""#));
-    assert!(!transformed.contains(r#"font-family="Virgil""#));
-}
-
-#[test]
-fn transform_svg_can_override_font_family_for_text() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-family="Arial" font-size="12">Hello</text></svg>"#;
-    let transformed = transform_svg(
-        svg,
-        &JitterConfig::default(),
-        &TransformOptions {
-            seed: Some(42),
-            font_family_override: Some("Virgil".to_string()),
-            theme: Default::default(),
-        },
-    )
-    .unwrap();
-
-    assert!(transformed.contains(r#"font-family="Virgil""#));
-    assert!(!transformed.contains(r#"font-family="Arial""#));
-}
-
-#[test]
-fn transform_svg_adds_font_family_override_when_input_relies_on_stylesheet() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20">Hello</text></svg>"#;
-    let transformed = transform_svg(
-        svg,
-        &JitterConfig::default(),
-        &TransformOptions {
-            seed: Some(42),
-            font_family_override: Some("Virgil".to_string()),
-            theme: Default::default(),
-        },
-    )
-    .unwrap();
-
-    assert!(transformed.contains(r#"font-family="Virgil""#));
-}
-
-#[test]
-fn transform_svg_keeps_text_layout_and_only_jitters_rotation_and_opacity() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" font-size="12">Hello</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-
-    assert!(transformed.contains(r#"font-size="12""#));
-    // text は tspan に分割され、各文字に位置・傾きジッターが適用される
-    assert!(transformed.contains("<tspan"));
-    assert!(transformed.contains(r#"x="9."#) || transformed.contains(r#"x="10"#));
-    assert!(transformed.contains(r#"y="19."#) || transformed.contains(r#"y="20"#));
-    assert!(transformed.contains("transform=\"rotate("));
-}
+// #4: font_family_override は廃止（usvg が SVG をパースする時点でフォントが
+// 確定し、text は glyph path に展開される）。CLI フラグは残しているが、
+// transform_svg レイヤでの font-family 書き換えロジックは存在しないので
+// 対応するテストは削除した。フォント差し替えは `--font-dir` 経由で行う。
+// 同様に「text 要素を tspan に分割して位置/回転/不透明度をジッターする」旧仕様は
+// glyph path jitter に置き換わったため、tspan ベースのレイアウト保持テストも削除した。
 
 #[test]
 fn transform_svg_converts_circle_to_jittered_path() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
       <circle cx="50" cy="50" r="20" stroke="red" stroke-width="2"/>
     </svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(!transformed.contains("<circle"));
     assert!(transformed.contains("<path"));
@@ -320,7 +273,7 @@ fn transform_svg_converts_ellipse_to_jittered_path() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
       <ellipse cx="50" cy="50" rx="30" ry="20" stroke="blue" stroke-width="1.5"/>
     </svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(!transformed.contains("<ellipse"));
     assert!(transformed.contains("<path"));
@@ -333,7 +286,7 @@ fn transform_svg_converts_polygon_to_jittered_path() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
       <polygon points="10,10 20,20 30,10" stroke="green" fill="yellow"/>
     </svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
+    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42), None).unwrap();
 
     assert!(!transformed.contains("<polygon"));
     assert!(transformed.contains("<path"));
@@ -351,8 +304,8 @@ fn transform_svg_circle_ellipse_polygon_reproducible_with_same_seed() {
       <polygon points="10,10 20,20 30,10"/>
     </svg>"#;
     let config = JitterConfig::default();
-    let out1 = transform_svg(svg, &config, &options(42)).unwrap();
-    let out2 = transform_svg(svg, &config, &options(42)).unwrap();
+    let out1 = transform_svg(svg, &config, &options(42), None).unwrap();
+    let out2 = transform_svg(svg, &config, &options(42), None).unwrap();
     assert_eq!(out1, out2);
 }
 
@@ -362,41 +315,14 @@ fn transform_svg_circle_ellipse_polygon_different_with_different_seed() {
       <circle cx="50" cy="50" r="20"/>
     </svg>"#;
     let config = JitterConfig::default();
-    let out1 = transform_svg(svg, &config, &options(42)).unwrap();
-    let out2 = transform_svg(svg, &config, &options(43)).unwrap();
+    let out1 = transform_svg(svg, &config, &options(42), None).unwrap();
+    let out2 = transform_svg(svg, &config, &options(43), None).unwrap();
     assert_ne!(out1, out2);
 }
 
-#[test]
-fn transform_svg_appends_rotation_to_existing_text_transform() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" transform="translate(1 2)">Hello</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-
-    assert!(transformed.contains(r#"transform="translate(1 2) rotate("#));
-}
-
-#[test]
-fn transform_svg_preserves_text_position_and_font_size_exactly() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="40" y="70" font-size="28">Hello</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-
-    assert!(transformed.contains(r#"x="40""#));
-    assert!(transformed.contains(r#"y="70""#));
-    assert!(transformed.contains(r#"font-size="28""#));
-}
-
-#[test]
-fn transform_svg_jitters_existing_text_opacity() {
-    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="10" y="20" opacity="0.8">Hello</text></svg>"#;
-    let transformed = transform_svg(svg, &JitterConfig::default(), &options(42)).unwrap();
-
-    // text 要素の opacity はジッターされ、各 tspan にも個別のジッター opacity が適用される
-    assert!(transformed.contains(r#"opacity="0.8"#)); // opacity 属性が存在する
-    assert!(!transformed.contains(r#"opacity="0.800""#)); // ジッターされているため、元の値は保持されない
-    assert!(transformed.contains("<tspan"));
-    // 複数の tspan が存在
-    assert!(transformed.matches("<tspan").count() > 1);
-}
+// #4: 旧 text 仕様 (rotation 累積, x/y/font-size 保持, opacity ジッター, tspan 展開)
+// は廃止。text は usvg で glyph path に展開され、既存 path jitter が適用される。
+// 新仕様の text→path 統合テストは tests/text_to_path_integration.rs に置く。
 
 /// Sumi/Watercolor の bleed_pass_params のマジックナンバーを仕様として固定する。
 /// この値を緩く変えると、aquarelle ラスター pass の見た目が黙って変わるので
@@ -461,7 +387,7 @@ fn test_legacy_bleed_filter_defs_removed_for_all_themes() {
             font_family_override: None,
             theme,
         };
-        let out = transform_svg(svg, &config, &opts).unwrap();
+        let out = transform_svg(svg, &config, &opts, None).unwrap();
         assert!(
             !out.contains("<filter id=\"subtle-bleed"),
             "{:?} leaks subtle-bleed filter def",
@@ -485,10 +411,11 @@ fn test_legacy_bleed_filter_defs_removed_for_all_themes() {
     }
 }
 
-/// 残置仕様: <text>/<tspan> には text-grunge フィルタだけが付き、廃止された
-/// subtle-bleed への参照は一切残らない。全テーマで成立する。
+/// #4 廃止: 旧仕様では <text>/<tspan> に text-grunge filter が付与されていたが、
+/// usvg で glyph path に展開する方式に置き換わったため、tspan も text-grunge も
+/// 出力には現れない。代替検証は tests/text_to_path_integration.rs を参照。
 #[test]
-fn test_text_filter_only_text_grunge() {
+fn test_text_grunge_filter_is_removed_for_all_themes() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">
         <text x="20" y="50" font-size="24">Hi</text>
     </svg>"#;
@@ -508,18 +435,21 @@ fn test_text_filter_only_text_grunge() {
             font_family_override: None,
             theme,
         };
-        let out = transform_svg(svg, &config, &opts).unwrap();
+        let out = transform_svg(svg, &config, &opts, None).unwrap();
 
-        // 文字ごとに tspan が出る前提
-        assert!(out.contains("<tspan"), "{:?} dropped tspan output", theme);
         assert!(
-            out.contains(r#"filter="url(#text-grunge)""#),
-            "{:?} tspan must keep text-grunge filter",
+            !out.contains("text-grunge"),
+            "{:?} still emits text-grunge filter (deleted in #4)",
             theme
         );
         assert!(
-            !out.contains("url(#subtle-bleed)"),
-            "{:?} tspan must not reference subtle-bleed",
+            !out.contains("<tspan"),
+            "{:?} still emits tspan (deleted in #4)",
+            theme
+        );
+        assert!(
+            !out.contains("<text "),
+            "{:?} still emits <text> element",
             theme
         );
     }
