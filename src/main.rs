@@ -553,4 +553,70 @@ mod tests {
     fn build_dimensions_none() {
         assert_eq!(build_dimensions(None, None), None);
     }
+
+    #[test]
+    fn infer_format_from_path_no_extension_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("output"), "png");
+    }
+
+    #[test]
+    fn infer_format_from_path_trailing_dot_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("output."), "png");
+    }
+
+    #[test]
+    fn infer_format_from_path_uppercase_png_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("OUTPUT.PNG"), "png");
+    }
+
+    #[test]
+    fn infer_format_from_path_uppercase_svg_falls_back_to_png_not_svg() {
+        assert_eq!(infer_format_from_path("OUTPUT.SVG"), "png");
+    }
+
+    #[test]
+    fn md_cli_format_defaults_to_png() {
+        let cli =
+            Cli::try_parse_from(["blueprinter", "md", "-i", "in.md", "-o", "out_dir"]).unwrap();
+        let Commands::Md { format, .. } = cli.command else {
+            panic!("expected md command");
+        };
+        assert_eq!(format, "png");
+    }
+
+    #[test]
+    fn md_cli_format_explicit_svg_preserved() {
+        let cli = Cli::try_parse_from([
+            "blueprinter",
+            "md",
+            "-i",
+            "in.md",
+            "-o",
+            "out_dir",
+            "--format",
+            "svg",
+        ])
+        .unwrap();
+        let Commands::Md { format, .. } = cli.command else {
+            panic!("expected md command");
+        };
+        assert_eq!(format, "svg");
+    }
+
+    #[test]
+    fn transform_cli_format_explicit_svg_preserved() {
+        let cli = Cli::try_parse_from([
+            "blueprinter",
+            "transform",
+            "-i",
+            "in.svg",
+            "-o",
+            "out.png",
+            "--format",
+            "svg",
+        ])
+        .unwrap();
+        let (_, output_args) = assert_transform_command(cli);
+        assert_eq!(output_args.format.as_deref(), Some("svg"));
+    }
 }
