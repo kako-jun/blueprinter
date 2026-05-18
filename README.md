@@ -83,7 +83,7 @@ blueprinter transform -i input.svg -o output.png --theme sumi --seed 42
 
 **Features:**
 - Grayscale color palette (black to light gray)
-- Gaussian blur filter with 2–4px standard deviation
+- Raster bleed via the aquarelle compositor (`radius=3.0`, `intensity=0.3`, `halo=0.0`) applied after rasterization for a soft ink-wash spread
 - Semi-transparent stroke opacity (0.6–1.0) for ink wash effect
 
 ### Watercolor Theme
@@ -96,7 +96,7 @@ blueprinter transform -i input.svg -o output.png --theme watercolor --seed 42
 
 **Features:**
 - Pastel color palette (#FFB3BA, #FFDFBA, #FFFFBA, #BAFFC9, #BAE1FF, #E0BBE4, #FFC7F5)
-- Gaussian blur filter with 4–8px standard deviation for diffuse bleed
+- Raster bleed via the aquarelle compositor (`radius=6.0`, `intensity=0.5`, `halo=0.4`) for diffuse pigment spread and soft halo
 - Color matrix saturation adjustment (90%) for soft, washed appearance
 - Semi-transparent fills (0.5–0.9) for transparency effect
 
@@ -153,8 +153,8 @@ blueprinter transform -i input.svg -o output.png --theme chalk --seed 42
 - `render` command: Mermaid (`.mmd` / `.mermaid`) → mmdc → blueprinter pipeline. Supports the same theme / output-format / jitter / font flags as `transform`. Requires [mermaid-cli](https://github.com/mermaid-js/mermaid-cli): `npm install -g @mermaid-js/mermaid-cli`
 - `md` command: currently extracts every ` ```mermaid ` block from a Markdown file and writes them to an output directory as `<stem>-<n>.<ext>`. This command is intended to grow into the general pipeline for embedded visual blocks such as future `latex-render`.
 - Blueprint theme: complete with stroke/fill styling and background
-- **Sumi theme**: ink wash effect with grayscale colors and blur filters
-- **Watercolor theme**: pastel color palette with diffuse bleed effect
+- **Sumi theme**: ink wash effect with grayscale colors and a raster bleed pass (aquarelle compositor)
+- **Watercolor theme**: pastel color palette with a diffuse raster bleed pass (aquarelle compositor)
 - **Chalk theme**: white chalk strokes on a chalkboard with dust/breakup filter
 - **Marker theme**: bold neon highlighter strokes on a dark navy background with halo
 - **Manga theme**: black ink lines on white paper with three screentone patterns for fills
