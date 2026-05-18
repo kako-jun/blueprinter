@@ -187,7 +187,7 @@ When rasterizing to PNG / WebP, blueprinter loads the host's system fonts so any
 For cross-platform reproducibility, pass `--font-dir <path>` to load every `.ttf` / `.otf` in a directory into the rasterizer's font database. This is the recommended way to pin specific fonts:
 
 ```bash
-blueprinter transform -i input.svg -o output.png --format png \
+blueprinter transform -i input.svg -o output.png \
   --font-dir ./fonts \
   --font-family "Caveat"
 ```

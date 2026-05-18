@@ -225,7 +225,7 @@ fn run_md_batch(
     let ext = match format {
         "svg" | "png" | "webp" => format,
         _ => {
-            eprintln!("Error: unknown format '{format}'. Supported: svg, png, webp.");
+            eprintln!("Error: unknown format '{format}'. Supported: png, webp, svg.");
             std::process::exit(1);
         }
     };
@@ -331,7 +331,7 @@ fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArg
         )
         .and_then(|bytes| fs::write(&out.output, bytes).map_err(|e| e.to_string())),
         _ => {
-            eprintln!("Error: unknown format '{output_format}'. Supported: svg, png, webp.");
+            eprintln!("Error: unknown format '{output_format}'. Supported: png, webp, svg.");
             std::process::exit(1);
         }
     };
@@ -527,7 +527,7 @@ mod tests {
     }
 
     #[test]
-    fn infer_format_from_path_default() {
+    fn infer_format_from_path_unknown_extension_falls_back_to_png() {
         assert_eq!(infer_format_from_path("output.txt"), "png");
     }
 
