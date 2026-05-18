@@ -131,6 +131,16 @@ pub fn is_closed_shape(tag: &str) -> bool {
     matches!(tag, "rect" | "circle" | "ellipse" | "polygon")
 }
 
+/// Returns true when `d` contains a path-close command (`Z` or `z`).
+/// Used to recognise paths emitted from rect/circle/ellipse/polygon after
+/// usvg canonicalization (which `flatten_text_to_paths` triggers whenever
+/// the input SVG contains `<text>`) as closed shapes for fill styling.
+/// Without this, themes like blueprint would skip the `fill="none"` rewrite
+/// on a Mermaid rect that came through the text-flatten path.
+pub fn path_is_closed(d: &str) -> bool {
+    d.contains('Z') || d.contains('z')
+}
+
 /// Style attribute rewriter shared by all themes that recolor strokes/fills.
 pub fn rewrite_style(style: &str, tag: &str, stroke_repl: &str, closed_fill_repl: &str) -> String {
     let is_closed = is_closed_shape(tag);
@@ -160,4 +170,29 @@ pub fn rewrite_style(style: &str, tag: &str, stroke_repl: &str, closed_fill_repl
         result.pop();
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_is_closed_detects_uppercase_z() {
+        assert!(path_is_closed("M 0 0 L 10 0 L 10 10 Z"));
+    }
+
+    #[test]
+    fn path_is_closed_detects_lowercase_z() {
+        assert!(path_is_closed("M 0 0 l 10 0 l 0 10 z"));
+    }
+
+    #[test]
+    fn path_is_closed_open_path_returns_false() {
+        assert!(!path_is_closed("M 0 0 L 10 0"));
+    }
+
+    #[test]
+    fn path_is_closed_empty_string_returns_false() {
+        assert!(!path_is_closed(""));
+    }
 }

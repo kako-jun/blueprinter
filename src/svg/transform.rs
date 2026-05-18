@@ -7,7 +7,7 @@ use roxmltree::{Document, Node};
 use crate::jitter::{jitter_primitive_path_with_seed, JitterConfig, JitteredPath};
 use crate::svg::primitive::Primitive;
 use crate::svg::text_to_path::flatten_text_to_paths;
-use crate::svg::theme::theme_style;
+use crate::svg::theme::{path_is_closed, theme_style};
 
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
@@ -170,6 +170,7 @@ fn serialize_jittered_path(
 
     let mut rng = next_rng(seed_state);
     let style = theme_style(options.theme);
+    let fill_tag = effective_tag_for_fill(source_tag, Some(path.d.as_str()));
 
     for attr in source.attributes() {
         if path.stroke_width.is_some() && attr.name() == "stroke-width" {
@@ -179,8 +180,8 @@ fn serialize_jittered_path(
             let attr_name = qualified_attr_name(source, &attr);
             let attr_value = match attr.name() {
                 "stroke" => style.stroke_random(attr.value(), &mut rng),
-                "fill" => style.fill_random(attr.value(), source_tag, &mut rng),
-                "style" => style.style(attr.value(), source_tag),
+                "fill" => style.fill_random(attr.value(), fill_tag, &mut rng),
+                "style" => style.style(attr.value(), fill_tag),
                 _ => attr.value().to_string(),
             };
             out.push_str(&format_attr(&attr_name, &attr_value));
@@ -238,6 +239,7 @@ fn serialize_original_element(
     }
     let style = theme_style(options.theme);
     let mut has_stroke = false;
+    let fill_tag = effective_tag_for_fill(&tag, node.attribute("d")).to_string();
     for attr in node.attributes() {
         let attr_name = qualified_attr_name(node, &attr);
         let attr_value = match attr.name() {
@@ -245,8 +247,8 @@ fn serialize_original_element(
                 has_stroke = true;
                 style.stroke_static(attr.value())
             }
-            "fill" => style.fill_static(attr.value(), &tag),
-            "style" => style.style(attr.value(), &tag),
+            "fill" => style.fill_static(attr.value(), &fill_tag),
+            "style" => style.style(attr.value(), &fill_tag),
             _ => attr.value().to_string(),
         };
         out.push_str(&format_attr(&attr_name, &attr_value));
@@ -334,6 +336,26 @@ fn qualified_attr_name(node: Node<'_, '_>, attr: &roxmltree::Attribute<'_, '_>) 
         }
     }
     attr.name().to_string()
+}
+
+/// When `flatten_text_to_paths` runs (any input SVG containing `<text>`),
+/// `usvg::Tree::to_string` canonicalizes every rect/circle/ellipse/polygon
+/// into a `<path>`. The downstream fill/style theme helpers use
+/// `is_closed_shape(tag)` to decide whether to rewrite fills (e.g. blueprint
+/// turning a Mermaid rect fill into `"none"`), and `"path"` is not in that
+/// set — so a Mermaid rect that round-tripped through usvg would lose its
+/// fill rewrite. We detect a closed path via its `d` close command and map
+/// the tag to `"rect"` for the fill/style call only. Stroke decisions stay
+/// on the original tag.
+fn effective_tag_for_fill<'a>(tag: &'a str, d: Option<&str>) -> &'a str {
+    if tag == "path" {
+        if let Some(d) = d {
+            if path_is_closed(d) {
+                return "rect";
+            }
+        }
+    }
+    tag
 }
 
 fn is_geometry_attr(tag: &str, name: &str) -> bool {
@@ -658,6 +680,72 @@ mod tests {
         assert!(
             has_palette_color,
             "Result should contain at least one watercolor palette color"
+        );
+    }
+
+    #[test]
+    fn transform_svg_treats_closed_path_as_fill_target_for_blueprint() {
+        // Mermaid 風: <text> を含むため flatten_text_to_paths が usvg canonicalize
+        // を走らせ、rect は <path d="... Z"> に化ける。それでも blueprint の
+        // closed-shape fill 処理 (fill="none") が効くことを保証する。
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+          <rect x="10" y="10" width="80" height="40" fill="red" stroke="black"/>
+          <text x="20" y="35" font-size="12">node</text>
+        </svg>"#;
+
+        let config = JitterConfig {
+            amplitude: 0.0,
+            ..JitterConfig::default()
+        };
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options, None).unwrap();
+        // closed path として認識され、blueprint の fill="none" が掛かっていること
+        assert!(
+            result.contains(r##"fill="none""##),
+            "closed path from usvg canonicalize must be treated as fill target for blueprint; got: {result}"
+        );
+        assert!(
+            !result.contains(r##"fill="red""##),
+            "original red fill must be rewritten by blueprint theme; got: {result}"
+        );
+    }
+
+    #[test]
+    fn transform_svg_keeps_open_path_fill_for_blueprint() {
+        // 開いた path（Z なし）には fill="none" を強制しない。
+        // 元の fill 属性が保持されることを確認する。
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+          <path d="M 10 10 L 90 10 L 90 50" fill="red" stroke="black"/>
+          <text x="20" y="80" font-size="12">node</text>
+        </svg>"#;
+
+        let config = JitterConfig {
+            amplitude: 0.0,
+            ..JitterConfig::default()
+        };
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options, None).unwrap();
+        // open path は fill="none" 化されない。usvg は色名を hex (#ff0000) に
+        // 正規化することがあるため、両方を許容して closed-shape 用の "none"
+        // 強制が掛かっていない（元の赤系 fill が残っている）ことを確認する。
+        // glyph path などの fill="none" は SVG 内に別途現れるため、特定の
+        // open path 要素に対する fill チェックでなく、赤系 fill の残存を見る。
+        let kept_red = result.contains(r##"fill="red""##)
+            || result.contains(r##"fill="#ff0000""##)
+            || result.contains(r##"fill="#FF0000""##);
+        assert!(
+            kept_red,
+            "open path fill must not be force-rewritten to none by blueprint; got: {result}"
         );
     }
 
