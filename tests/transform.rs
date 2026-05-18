@@ -92,7 +92,6 @@ fn transform_svg_preserves_non_jittered_structure_and_extra_attrs() {
         r##"<linearGradient id="g"><stop offset="0%" stop-color="#fff" /></linearGradient>"##
     ));
     assert!(transformed.contains("<filter id=\"text-grunge\""));
-    assert!(transformed.contains("<filter id=\"subtle-bleed\""));
     assert!(transformed.contains(r##"<g id="layer1" class="node" transform="translate(1 2)""##));
     assert!(transformed.contains(
         r#"<rect id="rounded" x="1" y="2" width="3" height="4" rx="1" style="opacity:0.5" />"#
@@ -312,7 +311,8 @@ fn transform_svg_converts_circle_to_jittered_path() {
     assert!(transformed.contains("<path"));
     assert!(transformed.contains("d=\"M"));
     assert!(transformed.contains(r#"stroke="red""#));
-    assert!(transformed.contains("filter=\"url(#subtle-bleed)\""));
+    // Default theme (None) does not emit any per-shape filter attribute.
+    assert!(!transformed.contains("filter=\"url(#"));
 }
 
 #[test]

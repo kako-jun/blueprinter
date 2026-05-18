@@ -52,8 +52,8 @@ impl ThemeStyle for MarkerStyle {
     fn default_stroke_static(&self) -> Option<String> {
         Some(MARKER_DEFAULT_STROKE.to_string())
     }
-    fn filter_id(&self) -> &'static str {
-        "marker-glow"
+    fn filter_id(&self) -> Option<&'static str> {
+        Some("marker-glow")
     }
     fn extra_defs(&self, _seed: u64) -> Option<String> {
         Some(marker_filter_defs())

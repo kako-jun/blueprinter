@@ -1,4 +1,5 @@
 /// Sumi (墨) theme implementation — ink bleed effect.
+use aquarelle::AquarelleBleedParams;
 use rand::{Rng, RngCore};
 
 use crate::svg::theme::{is_closed_shape, rewrite_style, ThemeStyle};
@@ -24,11 +25,12 @@ impl ThemeStyle for SumiStyle {
     fn stroke_opacity(&self, rng: &mut dyn RngCore) -> Option<f64> {
         Some(sumi_random_opacity(rng))
     }
-    fn filter_id(&self) -> &'static str {
-        "sumi-ink-bleed"
-    }
-    fn extra_defs(&self, seed: u64) -> Option<String> {
-        Some(sumi_filter_defs(seed))
+    fn bleed_pass_params(&self) -> Option<AquarelleBleedParams> {
+        Some(AquarelleBleedParams {
+            radius: 3.0,
+            intensity: 0.3,
+            halo: 0.0,
+        })
     }
     fn extra_replicas(&self, tag: &str) -> usize {
         if matches!(
@@ -49,12 +51,6 @@ pub fn sumi_random_opacity<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     (base + variance).min(1.0)
 }
 
-/// Creates SVG filter definitions for sumi theme.
-pub fn sumi_filter_defs(_seed: u64) -> String {
-    r#"<filter id="sumi-ink-bleed" x="-15%" y="-15%" width="130%" height="130%"><feGaussianBlur stdDeviation="3.0" result="blurred"/><feOffset in="blurred" dx="0.1" dy="0.1" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.2"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,13 +65,6 @@ mod tests {
             assert!(opacity >= 0.6);
             assert!(opacity <= 1.0);
         }
-    }
-
-    #[test]
-    fn test_sumi_filter_defs_contains_required_elements() {
-        let defs = sumi_filter_defs(42);
-        assert!(defs.contains("sumi-ink-bleed"));
-        assert!(defs.contains("feGaussianBlur"));
     }
 
     #[test]

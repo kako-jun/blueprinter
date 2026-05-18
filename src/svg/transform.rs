@@ -184,7 +184,9 @@ fn serialize_jittered_path(
         }
     }
 
-    out.push_str(&format!(r#" filter="url(#{})""#, style.filter_id()));
+    if let Some(filter_id) = style.filter_id() {
+        out.push_str(&format!(r#" filter="url(#{filter_id})""#));
+    }
     out.push_str(" />");
 
     let extra = style.extra_replicas(source_tag);
@@ -364,9 +366,7 @@ fn blueprinter_defs_content(seed: u64, theme: Theme) -> String {
     let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#
         .replace("{seed}", &seed.to_string());
 
-    let subtle_bleed = r#"<filter id="subtle-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur in="SourceGraphic" stdDeviation="3.0" result="blurred1"/><feOffset in="blurred1" dx="1.0" dy="1.0" result="offset1"/><feGaussianBlur in="offset1" stdDeviation="1.5" result="blurred2"/><feComponentTransfer in="blurred2" result="faded"><feFuncA type="linear" slope="0.4"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="darken"/></filter>"#;
-
-    let mut out = format!("{text_grunge}{subtle_bleed}");
+    let mut out = text_grunge;
     if let Some(extra) = theme_style(theme).extra_defs(seed) {
         out.push_str(&extra);
     }
@@ -524,7 +524,7 @@ fn serialize_text_content(
             }
         }
 
-        out.push_str(r#" filter="url(#text-grunge) url(#subtle-bleed)""#);
+        out.push_str(r#" filter="url(#text-grunge)""#);
 
         out.push('>');
         out.push_str(&escape_text(&ch.to_string()));
@@ -877,32 +877,33 @@ mod tests {
     }
 
     #[test]
-    fn test_both_themes_add_blur_filter() {
+    fn test_sumi_and_watercolor_skip_shape_filter_attribute() {
+        // sumi/watercolor use aquarelle raster bleed pass, so they must not
+        // emit per-shape SVG filter="url(#...)" attributes (which would
+        // double-bleed against the raster pass).
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
           <circle cx="50" cy="50" r="20"/>
         </svg>"#;
 
         let config = JitterConfig::default();
 
-        // Test sumi theme
         let sumi_options = TransformOptions {
             seed: Some(42),
             font_family_override: None,
             theme: Theme::Sumi,
         };
         let sumi_result = transform_svg(svg, &config, &sumi_options).unwrap();
-        assert!(sumi_result.contains("feGaussianBlur"));
-        assert!(sumi_result.contains("sumi-ink-bleed"));
+        assert!(!sumi_result.contains("sumi-ink-bleed"));
+        assert!(!sumi_result.contains("filter=\"url(#"));
 
-        // Test watercolor theme
         let watercolor_options = TransformOptions {
             seed: Some(42),
             font_family_override: None,
             theme: Theme::Watercolor,
         };
         let watercolor_result = transform_svg(svg, &config, &watercolor_options).unwrap();
-        assert!(watercolor_result.contains("feGaussianBlur"));
-        assert!(watercolor_result.contains("watercolor-bleed"));
+        assert!(!watercolor_result.contains("watercolor-bleed"));
+        assert!(!watercolor_result.contains("filter=\"url(#"));
     }
 }
 
@@ -1003,38 +1004,31 @@ fn test_chalk_theme_closed_shape_fill_none() {
 
 #[test]
 fn test_theme_filter_ids_are_applied() {
+    // Only themes that override `filter_id` (chalk, marker) should emit
+    // per-shape filter attributes. Blueprint, sumi, and watercolor either use
+    // no per-shape filter (blueprint) or rely on the aquarelle raster bleed
+    // pass instead (sumi, watercolor).
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
           <circle cx="50" cy="50" r="20" stroke="black"/>
         </svg>"#;
 
     let config = JitterConfig::default();
 
-    // Test Blueprint theme
-    let blueprint_options = TransformOptions {
+    let chalk_options = TransformOptions {
         seed: Some(42),
         font_family_override: None,
-        theme: Theme::Blueprint,
+        theme: Theme::Chalk,
     };
-    let blueprint_result = transform_svg(svg, &config, &blueprint_options).unwrap();
-    assert!(blueprint_result.contains(r##"filter="url(#subtle-bleed)""##));
+    let chalk_result = transform_svg(svg, &config, &chalk_options).unwrap();
+    assert!(chalk_result.contains(r##"filter="url(#chalk-dust)""##));
 
-    // Test Sumi theme
-    let sumi_options = TransformOptions {
+    let marker_options = TransformOptions {
         seed: Some(42),
         font_family_override: None,
-        theme: Theme::Sumi,
+        theme: Theme::Marker,
     };
-    let sumi_result = transform_svg(svg, &config, &sumi_options).unwrap();
-    assert!(sumi_result.contains(r##"filter="url(#sumi-ink-bleed)""##));
-
-    // Test Watercolor theme
-    let watercolor_options = TransformOptions {
-        seed: Some(42),
-        font_family_override: None,
-        theme: Theme::Watercolor,
-    };
-    let watercolor_result = transform_svg(svg, &config, &watercolor_options).unwrap();
-    assert!(watercolor_result.contains(r##"filter="url(#watercolor-bleed)""##));
+    let marker_result = transform_svg(svg, &config, &marker_options).unwrap();
+    assert!(marker_result.contains(r##"filter="url(#marker-glow)""##));
 }
 
 #[test]

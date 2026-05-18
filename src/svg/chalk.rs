@@ -27,8 +27,8 @@ impl ThemeStyle for ChalkStyle {
     fn default_stroke_static(&self) -> Option<String> {
         Some(CHALK_DEFAULT_STROKE.to_string())
     }
-    fn filter_id(&self) -> &'static str {
-        "chalk-dust"
+    fn filter_id(&self) -> Option<&'static str> {
+        Some("chalk-dust")
     }
     fn extra_defs(&self, seed: u64) -> Option<String> {
         Some(chalk_filter_defs(seed))
