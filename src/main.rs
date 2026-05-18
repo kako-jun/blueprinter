@@ -11,7 +11,8 @@ use blueprinter::svg::{export_to_png, export_to_webp, transform_svg, Theme, Tran
 #[command(version)]
 #[command(about = "Hand-drawn style diagram renderer CLI")]
 #[command(
-    long_about = "Turn SVG into sketchy SVG. Mermaid via mmdc and draw.io direct input are planned."
+    long_about = "Render structured diagrams (Mermaid, draw.io-planned) as hand-drawn raster images. \
+PNG/WebP are the primary outputs; SVG output remains available for debugging the pipeline."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -59,7 +60,9 @@ struct OutputArgs {
     #[arg(short, long)]
     output: String,
 
-    /// Output format (svg, png, webp). Inferred from output extension if omitted.
+    /// Output format (png, webp, svg). Inferred from output extension if
+    /// omitted; defaults to png when the extension is unrecognised. svg is
+    /// debug-only.
     #[arg(long)]
     format: Option<String>,
 
@@ -126,8 +129,8 @@ enum Commands {
         #[command(flatten)]
         style: StyleArgs,
 
-        /// Output format (svg, png, webp). Default: svg.
-        #[arg(long, default_value = "svg")]
+        /// Output format (png, webp, svg). Default: png. svg is debug-only.
+        #[arg(long, default_value = "png")]
         format: String,
 
         /// Scale factor for raster output (default: 1.0)
@@ -222,7 +225,7 @@ fn run_md_batch(
     let ext = match format {
         "svg" | "png" | "webp" => format,
         _ => {
-            eprintln!("Error: unknown format '{format}'. Supported: svg, png, webp.");
+            eprintln!("Error: unknown format '{format}'. Supported: png, webp, svg.");
             std::process::exit(1);
         }
     };
@@ -328,7 +331,7 @@ fn run_pipeline(svg: &str, input_label: &str, style: &StyleArgs, out: &OutputArg
         )
         .and_then(|bytes| fs::write(&out.output, bytes).map_err(|e| e.to_string())),
         _ => {
-            eprintln!("Error: unknown format '{output_format}'. Supported: svg, png, webp.");
+            eprintln!("Error: unknown format '{output_format}'. Supported: png, webp, svg.");
             std::process::exit(1);
         }
     };
@@ -382,7 +385,7 @@ fn infer_format_from_path(path: &str) -> &'static str {
         Some("png") => "png",
         Some("webp") => "webp",
         Some("svg") => "svg",
-        _ => "svg",
+        _ => "png",
     }
 }
 
@@ -524,8 +527,8 @@ mod tests {
     }
 
     #[test]
-    fn infer_format_from_path_default() {
-        assert_eq!(infer_format_from_path("output.txt"), "svg");
+    fn infer_format_from_path_unknown_extension_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("output.txt"), "png");
     }
 
     #[test]
@@ -549,5 +552,71 @@ mod tests {
     #[test]
     fn build_dimensions_none() {
         assert_eq!(build_dimensions(None, None), None);
+    }
+
+    #[test]
+    fn infer_format_from_path_no_extension_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("output"), "png");
+    }
+
+    #[test]
+    fn infer_format_from_path_trailing_dot_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("output."), "png");
+    }
+
+    #[test]
+    fn infer_format_from_path_uppercase_png_falls_back_to_png() {
+        assert_eq!(infer_format_from_path("OUTPUT.PNG"), "png");
+    }
+
+    #[test]
+    fn infer_format_from_path_uppercase_svg_falls_back_to_png_not_svg() {
+        assert_eq!(infer_format_from_path("OUTPUT.SVG"), "png");
+    }
+
+    #[test]
+    fn md_cli_format_defaults_to_png() {
+        let cli =
+            Cli::try_parse_from(["blueprinter", "md", "-i", "in.md", "-o", "out_dir"]).unwrap();
+        let Commands::Md { format, .. } = cli.command else {
+            panic!("expected md command");
+        };
+        assert_eq!(format, "png");
+    }
+
+    #[test]
+    fn md_cli_format_explicit_svg_preserved() {
+        let cli = Cli::try_parse_from([
+            "blueprinter",
+            "md",
+            "-i",
+            "in.md",
+            "-o",
+            "out_dir",
+            "--format",
+            "svg",
+        ])
+        .unwrap();
+        let Commands::Md { format, .. } = cli.command else {
+            panic!("expected md command");
+        };
+        assert_eq!(format, "svg");
+    }
+
+    #[test]
+    fn transform_cli_format_explicit_svg_preserved() {
+        let cli = Cli::try_parse_from([
+            "blueprinter",
+            "transform",
+            "-i",
+            "in.svg",
+            "-o",
+            "out.png",
+            "--format",
+            "svg",
+        ])
+        .unwrap();
+        let (_, output_args) = assert_transform_command(cli);
+        assert_eq!(output_args.format.as_deref(), Some("svg"));
     }
 }

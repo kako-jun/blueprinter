@@ -2,7 +2,7 @@
 
 Hand-drawn style embedded-visual renderer CLI.
 
-Turn SVG into sketchy SVG today. Rasterize to PNG / WebP. Mermaid input is supported via the external `mmdc` (mermaid-cli). The Markdown pipeline currently batch-renders embedded `mermaid` blocks and is planned to expand into a general embedded-visual compiler, starting with `latex-render` blocks for editorial cards, lists, and tables. draw.io direct input is planned.
+blueprinter renders structured diagrams (Mermaid today via the external `mmdc`, draw.io direct input planned) as hand-drawn raster images. The primary outputs are **PNG** and **WebP**; SVG output is kept as a debug-only intermediate so you can inspect the styling pipeline before rasterization. The Markdown pipeline currently batch-renders embedded `mermaid` blocks and is planned to expand into a general embedded-visual compiler, starting with `latex-render` blocks for editorial cards, lists, and tables.
 
 ## Installation
 
@@ -15,42 +15,48 @@ Or download a prebuilt binary from GitHub Releases once `v0.1.0+` tags are publi
 ## Usage
 
 ```bash
-# Render a Mermaid diagram (requires mmdc on PATH)
-blueprinter render -i flowchart.mmd -o flowchart.svg --theme manga --seed 42
+# Render a Mermaid diagram to PNG (requires mmdc on PATH)
+blueprinter render -i flowchart.mmd -o flowchart.png --theme manga --seed 42
 
 # Batch-render every supported embedded visual block in a Markdown file
-blueprinter md -i README.md -o ./diagrams --theme manga --format png --width 800
+# (PNG is the default format)
+blueprinter md -i README.md -o ./diagrams --theme manga --width 800
 
-# Transform an existing SVG with the default blueprint theme
-blueprinter transform -i input.svg -o output.svg --theme blueprint --seed 42
+# Transform an existing SVG into a hand-drawn PNG
+blueprinter transform -i input.svg -o output.png --theme blueprint --seed 42
+
+# Export to PNG with an explicit scale factor
+blueprinter transform -i input.svg -o output.png \
+  --scale 2.0
+
+# Export to PNG with explicit dimensions (maintains aspect ratio)
+blueprinter transform -i input.svg -o output.png \
+  --width 800
+
+# Export to lossless WebP (smaller than PNG for diagram content)
+blueprinter transform -i input.svg -o output.webp \
+  --width 800
 
 # Tune the hand-drawn intensity
-blueprinter transform -i input.svg -o output.svg \
+blueprinter transform -i input.svg -o output.png \
   --seed 42 \
   --jitter-amplitude 3.5 \
   --jitter-frequency 7 \
   --jitter-stroke-width-var 0.4
 
 # Override text font-family while keeping layout intact
-blueprinter transform -i input.svg -o output.svg \
+blueprinter transform -i input.svg -o output.png \
   --seed 42 \
   --font-family "Virgil"
 
-# Export to PNG (2x scale)
-blueprinter transform -i input.svg -o output.png \
-  --format png \
-  --scale 2.0
-
-# Export to PNG with explicit dimensions (maintains aspect ratio)
-blueprinter transform -i input.svg -o output.png \
-  --format png \
-  --width 800
-
-# Export to lossless WebP (smaller than PNG for diagram content)
-blueprinter transform -i input.svg -o output.webp \
-  --format webp \
-  --width 800
+# Debug-only: dump the intermediate styled SVG before rasterization
+blueprinter transform -i input.svg -o debug.svg --format svg --seed 42
 ```
+
+> Note: `--format svg` (and writing to a `.svg` path) keeps working, but SVG
+> output is treated as a debug aid — the styling pipeline is moving toward
+> raster-only effects (watercolor bleed, text-to-path, etc.) that cannot be
+> faithfully represented in SVG.
 
 `--jitter-amplitude` controls how far coordinates can wobble, `--jitter-frequency`
 controls how densely strokes are subdivided before wobble is applied, and
@@ -72,7 +78,7 @@ if omitted, existing text fonts and stylesheet-driven fonts are left as authored
 The sumi (墨) theme mimics traditional Japanese ink painting with grayscale strokes and a soft bleed effect.
 
 ```bash
-blueprinter transform -i input.svg -o output.svg --theme sumi --seed 42
+blueprinter transform -i input.svg -o output.png --theme sumi --seed 42
 ```
 
 **Features:**
@@ -85,7 +91,7 @@ blueprinter transform -i input.svg -o output.svg --theme sumi --seed 42
 The watercolor theme simulates soft pigment mixing and color bleeding with pastel colors.
 
 ```bash
-blueprinter transform -i input.svg -o output.svg --theme watercolor --seed 42
+blueprinter transform -i input.svg -o output.png --theme watercolor --seed 42
 ```
 
 **Features:**
@@ -99,7 +105,7 @@ blueprinter transform -i input.svg -o output.svg --theme watercolor --seed 42
 The manga theme renders crisp black ink lines on white paper, with closed shapes filled by `<pattern>`-based screentones (sparse dots, dense dots, or diagonal lines) sampled per shape.
 
 ```bash
-blueprinter transform -i input.svg -o output.svg --theme manga --seed 42
+blueprinter transform -i input.svg -o output.png --theme manga --seed 42
 ```
 
 **Features:**
@@ -113,7 +119,7 @@ blueprinter transform -i input.svg -o output.svg --theme manga --seed 42
 The marker theme renders strokes in saturated neon highlighter colors on a dark navy background, with a soft halo behind each shape.
 
 ```bash
-blueprinter transform -i input.svg -o output.svg --theme marker --seed 42
+blueprinter transform -i input.svg -o output.png --theme marker --seed 42
 ```
 
 **Features:**
@@ -128,7 +134,7 @@ blueprinter transform -i input.svg -o output.svg --theme marker --seed 42
 The chalk theme renders strokes as white (and occasional pale color) chalk on a slate-green chalkboard, with a dust filter that breaks each stroke up.
 
 ```bash
-blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
+blueprinter transform -i input.svg -o output.png --theme chalk --seed 42
 ```
 
 **Features:**
@@ -141,9 +147,9 @@ blueprinter transform -i input.svg -o output.svg --theme chalk --seed 42
 ## Current Status
 
 ### Implemented
-- `transform` command: SVG → hand-drawn SVG transformation
-- PNG output: `--format png`, with `--scale`, `--width`, `--height` options
-- WebP output: `--format webp` (lossless; same flags as PNG)
+- `transform` command: SVG → hand-drawn raster (PNG/WebP) — SVG-output mode is preserved as a debug aid
+- PNG output (default): `--scale`, `--width`, `--height` options
+- WebP output (lossless): same flags as PNG, via `--format webp` or a `.webp` output path
 - `render` command: Mermaid (`.mmd` / `.mermaid`) → mmdc → blueprinter pipeline. Supports the same theme / output-format / jitter / font flags as `transform`. Requires [mermaid-cli](https://github.com/mermaid-js/mermaid-cli): `npm install -g @mermaid-js/mermaid-cli`
 - `md` command: currently extracts every ` ```mermaid ` block from a Markdown file and writes them to an output directory as `<stem>-<n>.<ext>`. This command is intended to grow into the general pipeline for embedded visual blocks such as future `latex-render`.
 - Blueprint theme: complete with stroke/fill styling and background
@@ -181,7 +187,7 @@ When rasterizing to PNG / WebP, blueprinter loads the host's system fonts so any
 For cross-platform reproducibility, pass `--font-dir <path>` to load every `.ttf` / `.otf` in a directory into the rasterizer's font database. This is the recommended way to pin specific fonts:
 
 ```bash
-blueprinter transform -i input.svg -o output.png --format png \
+blueprinter transform -i input.svg -o output.png \
   --font-dir ./fonts \
   --font-family "Caveat"
 ```
@@ -189,7 +195,7 @@ blueprinter transform -i input.svg -o output.png --format png \
 The repo-level `fonts/` directory is reserved for future built-in bundling; see `fonts/README.md` for license-compatible OFL fonts that fit each theme.
 
 ### Known Limitations
-- XML declarations, comments, processing instructions, doctypes, and CDATA boundaries are not preserved
+- The debug-only SVG output does not preserve XML declarations, comments, processing instructions, doctypes, or CDATA boundaries
 - Symbols and definitions under `defs`/`symbol`/`marker` are preserved without jitter
 
 ## License
