@@ -1,16 +1,19 @@
 # blueprinter Overview
 
-Last updated: 2026-04-27
+Last updated: 2026-05-18
 
 ## What is blueprinter?
 
 **blueprinter** is a CLI tool for turning embedded visuals into a hand-drawn, sketchy style.
 It accepts arbitrary SVG via `transform`, Mermaid (through external `mmdc`) via `render`,
 and Markdown documents containing one or more supported embedded visual blocks via `md`,
-and produces stylized SVG, PNG, or WebP output. Today the Markdown path handles `mermaid`
-blocks; the next planned expansion is `latex-render` blocks so lists, tables, and editorial
-layouts can be authored beside Markdown and rendered as static visual cards. draw.io direct
-input is a planned follow-up phase.
+and produces stylized **PNG or WebP** output by default. Stylized SVG output is still
+supported, but it is treated as a debug intermediate — the styling pipeline is being
+re-centred on raster effects (watercolor bleed, text-as-path, etc.) that cannot be
+faithfully expressed in SVG. Today the Markdown path handles `mermaid` blocks; the next
+planned expansion is `latex-render` blocks so lists, tables, and editorial layouts can be
+authored beside Markdown and rendered as static visual cards. draw.io direct input is a
+planned follow-up phase.
 
 The core idea: **do not recompute layout unless a front-end format requires it**.
 When blueprinter receives SVG, it preserves the existing geometry and transforms
@@ -43,19 +46,24 @@ any SVG-producing tool can be a front-end. For higher-level embedded formats suc
 as Mermaid or planned `latex-render`, layout belongs to the upstream compiler, not
 to blueprinter's styling stage.
 
-### SVG-first Pipeline
+### Raster-first Pipeline
 
-The internal pipeline is SVG → SVG first.
-PNG and WebP export are planned later, and will rasterize from the transformed SVG.
-This preserves vector quality for downstream editing and makes the transformation
-inspectable and debuggable.
+The user-facing pipeline is **structured-input → styled raster (PNG / WebP)**.
+Internally we still build a styled SVG as the intermediate representation, then
+rasterize it with `resvg`; that intermediate can be dumped to disk for inspection
+via `--format svg` (or by writing to a `.svg` path), but it is no longer the
+default output. Treating raster as the primary product lets future stages add
+effects that have no faithful SVG equivalent — watercolor bleed (#25), text
+converted to path (#4), and similar — without breaking a "SVG round-trip"
+contract that blueprinter was never trying to keep.
 
-The current serializer preserves non-jittered element structure, attributes,
-namespaces, and text, but it does not preserve XML declarations, comments,
-processing instructions, doctypes, or CDATA boundaries yet. Non-visual
-definition containers such as `defs`, `symbol`, and `marker` are intentionally
-left unchanged; shapes referenced via `use` therefore remain as authored until
-symbol-level styling is implemented.
+The intermediate SVG serializer preserves non-jittered element structure,
+attributes, namespaces, and text, but it does not preserve XML declarations,
+comments, processing instructions, doctypes, or CDATA boundaries; this is fine
+because that artifact is debug-only. Non-visual definition containers such as
+`defs`, `symbol`, and `marker` are intentionally left unchanged; shapes
+referenced via `use` therefore remain as authored until symbol-level styling
+is implemented.
 
 ### Randomness with Reproducibility
 
@@ -93,17 +101,17 @@ Input format
                           Intermediate SVG
     │
     ▼
-[ Layout-preserving SVG filter ]
+[ Layout-preserving styling stage ]
     │    ├── Stroke wobble
     │    ├── Fill texture
     │    ├── Color palette swap (theme)
     │    └── Random offset / jitter
     ▼
-Intermediate SVG
+Styled intermediate SVG
     │
-    ├──► Output SVG
+    ├──► [ Rasterizer (resvg) ]  ──►  PNG / WebP   (default output)
     │
-    └──► [ Rasterizer (resvg) ]  ──optional──►  PNG / WebP (lossless)
+    └──► debug-only SVG dump      (--format svg / *.svg path)
 ```
 
 For Markdown input, `md` acts as an orchestrator: find supported fenced blocks,
@@ -127,5 +135,5 @@ replaced by image references.
 - **Rust** — CLI and pipeline
 - **clap** — CLI argument parsing and subcommands
 - **SVG parsing** — roxmltree or similar for SVG DOM manipulation
-- **resvg** — planned SVG rasterization for PNG/WebP output
+- **resvg** — SVG rasterization for PNG/WebP output (default path)
 - **mmdc** — external Mermaid CLI invoked by the `render` subcommand for Mermaid → SVG conversion

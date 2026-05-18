@@ -1,6 +1,6 @@
 # blueprinter ロードマップ
 
-最終更新: 2026-04-25
+最終更新: 2026-05-18
 
 ## 完了済み
 
@@ -73,6 +73,7 @@
 - [x] md 一括変換モード — `md` サブコマンドが `.md` から ` ```mermaid ` ブロックを抽出 (line-by-line state machine、依存追加なし) し、`<out_dir>/<stem>-<n>.<ext>` で連番出力
 - [x] PNG 出力（resvg 導入、#11 完了）— `--format png`, `--scale`, `--width`, `--height` 対応
 - [x] WebP 出力（lossless）— `webp` クレート導入、PNG と同じフラグで動作。Diagram 用途では PNG より大幅に小さくなる
+- [x] 出力デフォルトをラスター主軸へ切替（#31）— `transform` / `render` の拡張子推定既定を `png` に、`md` サブコマンドの `--format` 既定も `png` に変更。SVG 出力は `--format svg` または `.svg` 拡張子で引き続き利用可能だが debug-only 扱い
 
 ### Phase 6: 追加テーマ・図形（#13, #14）
 
