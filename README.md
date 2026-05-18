@@ -44,10 +44,10 @@ blueprinter transform -i input.svg -o output.png \
   --jitter-frequency 7 \
   --jitter-stroke-width-var 0.4
 
-# Override text font-family while keeping layout intact
+# Supply a font directory so glyph paths use the face you want
 blueprinter transform -i input.svg -o output.png \
   --seed 42 \
-  --font-family "Virgil"
+  --font-dir ./fonts
 
 # Debug-only: dump the intermediate styled SVG before rasterization
 blueprinter transform -i input.svg -o debug.svg --format svg --seed 42
@@ -61,8 +61,11 @@ blueprinter transform -i input.svg -o debug.svg --format svg --seed 42
 `--jitter-amplitude` controls how far coordinates can wobble, `--jitter-frequency`
 controls how densely strokes are subdivided before wobble is applied, and
 `--jitter-stroke-width-var` controls relative stroke-thickness variation. Omitting
-them preserves today's defaults. `--font-family` overrides SVG text `font-family`;
-if omitted, existing text fonts and stylesheet-driven fonts are left as authored.
+them preserves today's defaults. Text in the input SVG is flattened to glyph
+outline paths via `usvg` before transformation (#4), so the same coordinate
+jitter that wobbles strokes and shapes also wobbles letter outlines — there is
+no longer a separate text-grunge filter or per-character rotation. To pin a
+specific face, pass `--font-dir <path>` (see the **Fonts** section below).
 
 ## Themes
 
@@ -158,7 +161,7 @@ blueprinter transform -i input.svg -o output.png --theme chalk --seed 42
 - **Marker theme**: bold neon highlighter strokes on a dark navy background with halo
 - **Manga theme**: black ink lines on white paper with three screentone patterns for fills
 - Jitter controls: `--jitter-amplitude`, `--jitter-frequency`, `--jitter-stroke-width-var`
-- Text overrides: `--font-family` for font replacement
+- Text → glyph path flattening via `usvg` (#4): letter outlines wobble through the same path jitter as strokes and shapes
 - Reproducible output: `--seed` for deterministic jitter
 - Shape jittering: `rect`, `line`, `polyline`, `path`, `circle`, `ellipse`, `polygon` (latter three via Bezier approximation)
 
@@ -166,7 +169,6 @@ blueprinter transform -i input.svg -o output.png --theme chalk --seed 42
 - `md` pipeline expansion: support ` ```latex-render ` blocks and replace them with generated SVG/PNG cards in a companion Markdown output
 - More screentone variants and (eventually) speed-line layout for manga
 - Full theme styling for blueprint (currently basic)
-- Text outline conversion for advanced effects
 - draw.io input path for `render`
 - `convert` command (general format conversion)
 
@@ -181,14 +183,13 @@ The first public crate/release target is `v0.1.0`.
 
 ### Font Resolution
 
-When rasterizing to PNG / WebP, blueprinter loads the host's system fonts so any `font-family` referenced in the input SVG (e.g. `Arial`, `Helvetica`) resolves. If the requested face is not installed, resvg falls back to a generic family.
+Text in the input SVG is flattened to glyph outline paths via `usvg` (#4) before any styling runs, so fonts are resolved up-front. blueprinter loads the host's system fonts so any `font-family` referenced in the input SVG (e.g. `Arial`, `Helvetica`) resolves. If the requested face is not installed, `usvg` falls back to whatever the fontdb can match.
 
-For cross-platform reproducibility, pass `--font-dir <path>` to load every `.ttf` / `.otf` in a directory into the rasterizer's font database. This is the recommended way to pin specific fonts:
+For cross-platform reproducibility, pass `--font-dir <path>` to load every `.ttf` / `.otf` in a directory into the fontdb. This is the recommended way to pin specific fonts:
 
 ```bash
 blueprinter transform -i input.svg -o output.png \
-  --font-dir ./fonts \
-  --font-family "Caveat"
+  --font-dir ./fonts
 ```
 
 The repo-level `fonts/` directory is reserved for future built-in bundling; see `fonts/README.md` for license-compatible OFL fonts that fit each theme.
