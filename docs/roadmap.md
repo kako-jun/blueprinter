@@ -86,8 +86,34 @@
 
 - [x] GitHub Releases workflow（tag `v*` で Linux/macOS/Windows artifact を生成）
 - [x] CHANGELOG.md 作成
-- [ ] crates.io 公開
-- [ ] `v0.1.0` tag + GitHub Release 作成
-- [ ] `cargo publish`
+- [x] `v0.2.0` tag + GitHub Release + `cargo publish`（出力ラスター主軸・aquarelle bleed・glyph path text 化を含む）
 - [ ] Homebrew formula 検討
 - [ ] 宣伝記事作成
+- [ ] `freeza/output/blueprinter-*` の Mermaid fixture 比較画像リフレッシュ（#25 / #4 でラスター出力が変わったため）
+
+## Known Limitations / 暫定実装
+
+セッション間で忘れず把握しておくべき制限事項。解消・実装決定時に削除またはアーカイブする。
+
+### 機能の暫定状態
+
+- **`--font-family` フラグが no-op (#4 glyph path 化以降)**
+  - API は破壊変更回避のため残置
+  - glyph path 化後は font 属性が SVG に存在しないため当たらない
+  - 再有効化検討: #35
+
+- **usvg canonicalize の副作用**
+  - `<text>` を含む SVG では rect / circle / ellipse / polygon が path に化け、色名が hex 化される（`red` → `#ff0000`）
+  - `is_closed_shape("path")` で fill 処理が走らない問題は `path_is_closed(d)` の Z/z 検出で補強済
+  - 形状固有情報（`rx`, `ry`, polygon の頂点リスト等）は実質損失するが、視覚出力には影響なし
+
+- **`contains_text_element` の検出が素朴**
+  - コメント内 / CDATA 内 / 属性値内の `<text>` を誤検出しうる
+  - 誤検出時に usvg を経由するだけで壊れないが、不要な canonicalize が走る
+
+### 残置 SVG filter
+
+- **`marker-glow` (marker テーマ)** — per-shape Gaussian blur halo
+- **`chalk-dust` (chalk テーマ)** — feTurbulence + feDisplacementMap による粉砕風
+- aquarelle の Pixmap 全体 pass とは性質が異なる（per-shape 効果）
+- aquarelle 化検討: #36

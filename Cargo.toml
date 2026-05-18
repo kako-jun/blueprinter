@@ -1,10 +1,10 @@
 [package]
 name = "blueprinter"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["kako-jun"]
 license = "MIT"
-description = "Hand-drawn style diagram renderer CLI — turn SVG into sketchy SVG"
+description = "Hand-drawn diagram raster renderer CLI — Mermaid / SVG → PNG / WebP with watercolor bleed (aquarelle) and glyph-path text jitter"
 homepage = "https://github.com/kako-jun/blueprinter"
 repository = "https://github.com/kako-jun/blueprinter"
 documentation = "https://docs.rs/blueprinter"
