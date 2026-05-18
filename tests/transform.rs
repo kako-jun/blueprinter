@@ -1,7 +1,7 @@
 use std::fs;
 
 use blueprinter::jitter::JitterConfig;
-use blueprinter::svg::{transform_svg, TransformOptions};
+use blueprinter::svg::{theme_style, transform_svg, Theme, TransformOptions};
 
 fn options(seed: u64) -> TransformOptions {
     TransformOptions {
@@ -396,4 +396,145 @@ fn transform_svg_jitters_existing_text_opacity() {
     assert!(transformed.contains("<tspan"));
     // 複数の tspan が存在
     assert!(transformed.matches("<tspan").count() > 1);
+}
+
+/// Sumi/Watercolor の bleed_pass_params のマジックナンバーを仕様として固定する。
+/// この値を緩く変えると、aquarelle ラスター pass の見た目が黙って変わるので
+/// 数値ピンを 1 箇所に置く。値を変えたいときは意図的にこのテストを更新する。
+#[test]
+fn test_theme_bleed_pass_params_values_are_pinned() {
+    let sumi = theme_style(Theme::Sumi)
+        .bleed_pass_params()
+        .expect("sumi must enable bleed pass");
+    assert_eq!(sumi.radius, 3.0);
+    assert_eq!(sumi.intensity, 0.3);
+    assert_eq!(sumi.halo, 0.0);
+
+    let watercolor = theme_style(Theme::Watercolor)
+        .bleed_pass_params()
+        .expect("watercolor must enable bleed pass");
+    assert_eq!(watercolor.radius, 6.0);
+    assert_eq!(watercolor.intensity, 0.5);
+    assert_eq!(watercolor.halo, 0.4);
+}
+
+/// aquarelle bleed pass は sumi / watercolor 限定。他テーマは None を返し、
+/// raster pass を走らせない（export 側で None 分岐に落ちる）。
+#[test]
+fn test_themes_without_bleed_pass_return_none() {
+    for theme in [
+        Theme::None,
+        Theme::Blueprint,
+        Theme::Chalk,
+        Theme::Marker,
+        Theme::Manga,
+    ] {
+        assert!(
+            theme_style(theme).bleed_pass_params().is_none(),
+            "{:?} must not enable bleed pass",
+            theme
+        );
+    }
+}
+
+/// 旧 SVG フィルタ実装の残骸検出。subtle-bleed / sumi-ink-bleed / watercolor-bleed
+/// の id と、それを参照する filter="url(#subtle-bleed)" が全テーマで出力に
+/// 残っていないことを担保する。
+#[test]
+fn test_subtle_bleed_filter_def_is_removed_for_all_themes() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <circle cx="50" cy="50" r="20" stroke="black"/>
+    </svg>"#;
+    let config = JitterConfig::default();
+
+    for theme in [
+        Theme::None,
+        Theme::Blueprint,
+        Theme::Sumi,
+        Theme::Watercolor,
+        Theme::Chalk,
+        Theme::Marker,
+        Theme::Manga,
+    ] {
+        let opts = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme,
+        };
+        let out = transform_svg(svg, &config, &opts).unwrap();
+        assert!(
+            !out.contains("<filter id=\"subtle-bleed"),
+            "{:?} leaks subtle-bleed filter def",
+            theme
+        );
+        assert!(
+            !out.contains("id=\"sumi-ink-bleed\""),
+            "{:?} leaks sumi-ink-bleed filter def",
+            theme
+        );
+        assert!(
+            !out.contains("id=\"watercolor-bleed\""),
+            "{:?} leaks watercolor-bleed filter def",
+            theme
+        );
+        assert!(
+            !out.contains("url(#subtle-bleed)"),
+            "{:?} still references subtle-bleed",
+            theme
+        );
+    }
+}
+
+/// 残置仕様: <text>/<tspan> には text-grunge フィルタだけが付き、廃止された
+/// subtle-bleed への参照は一切残らない。全テーマで成立する。
+#[test]
+fn test_text_filter_only_text_grunge() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">
+        <text x="20" y="50" font-size="24">Hi</text>
+    </svg>"#;
+    let config = JitterConfig::default();
+
+    for theme in [
+        Theme::None,
+        Theme::Blueprint,
+        Theme::Sumi,
+        Theme::Watercolor,
+        Theme::Chalk,
+        Theme::Marker,
+        Theme::Manga,
+    ] {
+        let opts = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme,
+        };
+        let out = transform_svg(svg, &config, &opts).unwrap();
+
+        // 文字ごとに tspan が出る前提
+        assert!(out.contains("<tspan"), "{:?} dropped tspan output", theme);
+        assert!(
+            out.contains(r#"filter="url(#text-grunge)""#),
+            "{:?} tspan must keep text-grunge filter",
+            theme
+        );
+        assert!(
+            !out.contains("url(#subtle-bleed)"),
+            "{:?} tspan must not reference subtle-bleed",
+            theme
+        );
+    }
+}
+
+/// chalk / marker は「per-shape filter_id を持つ」が「bleed_pass_params は None」のクラス。
+/// この組み合わせが崩れると、aquarelle raster pass が掛かったうえに glyph effect も
+/// 二重に乗ってしまうので、トレイト戻り値レベルで固定しておく。
+#[test]
+fn test_chalk_marker_have_filter_id_but_no_bleed_pass() {
+    let chalk = theme_style(Theme::Chalk);
+    assert_eq!(chalk.filter_id(), Some("chalk-dust"));
+    assert!(chalk.bleed_pass_params().is_none());
+
+    let marker = theme_style(Theme::Marker);
+    assert_eq!(marker.filter_id(), Some("marker-glow"));
+    assert!(marker.bleed_pass_params().is_none());
 }

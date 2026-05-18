@@ -244,6 +244,135 @@ mod tests {
     }
 
     #[test]
+    fn test_export_to_png_bleed_params_changes_output() {
+        // Bleed pass must actually alter the rendered pixels. Same SVG + same
+        // seed, only difference is bleed_params None vs sumi-equivalent Some.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50">
+            <circle cx="25" cy="25" r="15" fill="black"/>
+        </svg>"#;
+
+        let without = export_to_png(svg, None, 1.0, None, None, 42).expect("plain png");
+        let with = export_to_png(
+            svg,
+            None,
+            1.0,
+            None,
+            Some(AquarelleBleedParams {
+                radius: 3.0,
+                intensity: 0.3,
+                halo: 0.0,
+            }),
+            42,
+        )
+        .expect("bleed png");
+
+        assert_ne!(without, with);
+    }
+
+    #[test]
+    fn test_export_to_png_bleed_deterministic_same_seed() {
+        // Same SVG + same params + same seed must produce byte-identical PNG.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50">
+            <circle cx="25" cy="25" r="15" fill="black"/>
+        </svg>"#;
+
+        let params = AquarelleBleedParams {
+            radius: 6.0,
+            intensity: 0.5,
+            halo: 0.4,
+        };
+        let a = export_to_png(svg, None, 1.0, None, Some(params), 12345).expect("a");
+        let b = export_to_png(svg, None, 1.0, None, Some(params), 12345).expect("b");
+
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_export_to_png_bleed_differs_by_seed() {
+        // Bleed pass injects seed-dependent paper-grain noise, so two different
+        // seeds with the same params must produce different pixel data.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50">
+            <circle cx="25" cy="25" r="15" fill="black"/>
+        </svg>"#;
+
+        let params = AquarelleBleedParams {
+            radius: 6.0,
+            intensity: 0.5,
+            halo: 0.4,
+        };
+        let a = export_to_png(svg, None, 1.0, None, Some(params), 1).expect("seed 1");
+        let b = export_to_png(svg, None, 1.0, None, Some(params), 999_999).expect("seed 999999");
+
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_export_to_webp_bleed_params_changes_output() {
+        // WebP path must apply the bleed pass symmetrically to the PNG path.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50">
+            <circle cx="25" cy="25" r="15" fill="black"/>
+        </svg>"#;
+
+        let without = export_to_webp(svg, None, 1.0, None, None, 42).expect("plain webp");
+        let with = export_to_webp(
+            svg,
+            None,
+            1.0,
+            None,
+            Some(AquarelleBleedParams {
+                radius: 3.0,
+                intensity: 0.3,
+                halo: 0.0,
+            }),
+            42,
+        )
+        .expect("bleed webp");
+
+        assert_ne!(without, with);
+    }
+
+    #[test]
+    fn test_export_seed_fallback_equivalent_to_seed_42() {
+        // run_pipeline collapses `style.seed = None` to a fixed 42 fallback
+        // before calling export. We assert the export layer is deterministic
+        // under that exact contract: two PNG outputs with seed=42 (the
+        // fallback value) must match byte-for-byte, so a None caller can rely
+        // on the fallback being reproducible.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50">
+            <circle cx="25" cy="25" r="15" fill="black"/>
+        </svg>"#;
+
+        let params = AquarelleBleedParams {
+            radius: 3.0,
+            intensity: 0.3,
+            halo: 0.0,
+        };
+        let a = export_to_png(svg, None, 1.0, None, Some(params), 42).expect("a");
+        let b = export_to_png(svg, None, 1.0, None, Some(params), 42).expect("b");
+
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_export_invalid_svg_with_bleed_params_still_errs() {
+        // Invalid SVG must error out before the bleed pass runs (no panic,
+        // no partial output written to a pixmap that never existed).
+        let result = export_to_png(
+            "not valid svg",
+            None,
+            1.0,
+            None,
+            Some(AquarelleBleedParams {
+                radius: 6.0,
+                intensity: 0.5,
+                halo: 0.4,
+            }),
+            42,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_font_dir_arg_does_not_break_export() {
         // Smoke test only — passing a non-existent dir must not crash; usvg's
         // load_fonts_dir silently ignores missing paths. The image still renders
