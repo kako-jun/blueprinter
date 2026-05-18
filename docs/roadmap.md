@@ -64,7 +64,7 @@
 
 ### Phase 4: テキスト・フォント（#4, #12）
 
-- [x] text のフォント差し替え + ジッター（`--font-family` override / 元フォント維持 / layout固定のまま subtle rotation,opacity jitter / raster export ではシステムフォントを自動ロード）
+- [x] text → glyph path 展開（#4）— usvg の `Tree::to_string(&WriteOptions::default())`（preserve_text = false）で `<text>` を glyph outline path に展開し、既存 `jitter.rs` の path jitter をそのまま字形に当てる構成。旧 text-grunge filter / tspan 分割 / 文字単位の rotation・opacity ジッターは廃止
 - [~] フォント選定と同梱（OFLライセンス確認）— `--font-dir <path>` で任意ディレクトリのフォントを fontdb に追加するインフラは実装済み (`fonts/README.md` に推奨フォントを記載)。binary 同梱 (`include_bytes!` + 既定参照) は未着手 — 実フォントファイルを repo にコミットする工程が必要
 
 ### Phase 5: 入出力拡張（#9〜#11）

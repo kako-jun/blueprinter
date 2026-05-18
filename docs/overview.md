@@ -75,10 +75,12 @@ defined for the same SVG structure; adding or removing earlier jittered elements
 can change the seeded jitter applied to later elements. The current CLI also exposes
 `--jitter-amplitude`, `--jitter-frequency`, and `--jitter-stroke-width-var` so
 users can compare subtle and rough variants intentionally instead of relying on
-a single hardcoded style. Text can also be overridden with `--font-family`; if no
-override is provided, blueprinter preserves the font choice already encoded in the
-input SVG and applies only subtle seeded `rotation` and `opacity` jitter while
-preserving the original text layout box.
+a single hardcoded style. Text is flattened to glyph outline paths via `usvg`
+before transformation (#4), so the same path jitter that wobbles strokes and
+shapes also wobbles letter outlines — there is no separate text-grunge filter or
+per-character rotation layer anymore. Font resolution happens at flatten time:
+`--font-dir` adds extra TTF/OTF families to the fontdb, on top of the host's
+system fonts.
 
 ### No Editor
 

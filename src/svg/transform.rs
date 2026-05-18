@@ -1,10 +1,13 @@
+use std::path::Path;
+
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use roxmltree::{Document, Node};
 
 use crate::jitter::{jitter_primitive_path_with_seed, JitterConfig, JitteredPath};
 use crate::svg::primitive::Primitive;
-use crate::svg::theme::theme_style;
+use crate::svg::text_to_path::flatten_text_to_paths;
+use crate::svg::theme::{path_is_closed, theme_style};
 
 const XML_NS: &str = "http://www.w3.org/XML/1998/namespace";
 const SVG_NS: &str = "http://www.w3.org/2000/svg";
@@ -31,6 +34,7 @@ pub enum Theme {
 #[derive(Debug, PartialEq)]
 pub enum TransformError {
     XmlParseError(String),
+    TextFlattenError(String),
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -44,6 +48,7 @@ impl std::fmt::Display for TransformError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TransformError::XmlParseError(msg) => write!(f, "XML parse error: {msg}"),
+            TransformError::TextFlattenError(msg) => write!(f, "Text flatten error: {msg}"),
         }
     }
 }
@@ -54,8 +59,14 @@ pub fn transform_svg(
     input: &str,
     config: &JitterConfig,
     options: &TransformOptions,
+    font_dir: Option<&Path>,
 ) -> Result<String, TransformError> {
-    let doc = Document::parse(input).map_err(|e| TransformError::XmlParseError(e.to_string()))?;
+    // text → glyph path 展開を最初に通す。後段の roxmltree pipeline は
+    // <text>/<tspan> が来ない前提で動く（path jitter が glyph path に直接掛かる）。
+    let flattened =
+        flatten_text_to_paths(input, font_dir).map_err(TransformError::TextFlattenError)?;
+    let doc =
+        Document::parse(&flattened).map_err(|e| TransformError::XmlParseError(e.to_string()))?;
     let mut state = options.seed;
     Ok(serialize_node(
         doc.root_element(),
@@ -97,7 +108,7 @@ fn should_jitter(node: &Node<'_, '_>) -> bool {
     }
 
     match node.tag_name().name() {
-        "line" | "polyline" | "path" | "text" | "circle" | "ellipse" | "polygon" => true,
+        "line" | "polyline" | "path" | "circle" | "ellipse" | "polygon" => true,
         "rect" => node.attribute("rx").is_none() && node.attribute("ry").is_none(),
         _ => false,
     }
@@ -159,6 +170,7 @@ fn serialize_jittered_path(
 
     let mut rng = next_rng(seed_state);
     let style = theme_style(options.theme);
+    let fill_tag = effective_tag_for_fill(source_tag, Some(path.d.as_str()));
 
     for attr in source.attributes() {
         if path.stroke_width.is_some() && attr.name() == "stroke-width" {
@@ -168,8 +180,8 @@ fn serialize_jittered_path(
             let attr_name = qualified_attr_name(source, &attr);
             let attr_value = match attr.name() {
                 "stroke" => style.stroke_random(attr.value(), &mut rng),
-                "fill" => style.fill_random(attr.value(), source_tag, &mut rng),
-                "style" => style.style(attr.value(), source_tag),
+                "fill" => style.fill_random(attr.value(), fill_tag, &mut rng),
+                "style" => style.style(attr.value(), fill_tag),
                 _ => attr.value().to_string(),
             };
             out.push_str(&format_attr(&attr_name, &attr_value));
@@ -226,27 +238,24 @@ fn serialize_original_element(
         }
     }
     let style = theme_style(options.theme);
-    if should_jitter_text(&node) {
-        serialize_text_attrs(node, config, options, seed_state, &mut out);
-    } else {
-        let mut has_stroke = false;
-        for attr in node.attributes() {
-            let attr_name = qualified_attr_name(node, &attr);
-            let attr_value = match attr.name() {
-                "stroke" => {
-                    has_stroke = true;
-                    style.stroke_static(attr.value())
-                }
-                "fill" => style.fill_static(attr.value(), &tag),
-                "style" => style.style(attr.value(), &tag),
-                _ => attr.value().to_string(),
-            };
-            out.push_str(&format_attr(&attr_name, &attr_value));
-        }
-        if !has_stroke && !is_inside_non_visual_container(&node) {
-            if let Some(stroke) = style.default_stroke_static() {
-                out.push_str(&format_attr("stroke", &stroke));
+    let mut has_stroke = false;
+    let fill_tag = effective_tag_for_fill(&tag, node.attribute("d")).to_string();
+    for attr in node.attributes() {
+        let attr_name = qualified_attr_name(node, &attr);
+        let attr_value = match attr.name() {
+            "stroke" => {
+                has_stroke = true;
+                style.stroke_static(attr.value())
             }
+            "fill" => style.fill_static(attr.value(), &fill_tag),
+            "style" => style.style(attr.value(), &fill_tag),
+            _ => attr.value().to_string(),
+        };
+        out.push_str(&format_attr(&attr_name, &attr_value));
+    }
+    if !has_stroke && !is_inside_non_visual_container(&node) {
+        if let Some(stroke) = style.default_stroke_static() {
+            out.push_str(&format_attr("stroke", &stroke));
         }
     }
 
@@ -267,9 +276,7 @@ fn serialize_original_element(
             }
         }
     }
-    if tag == "text" {
-        serialize_text_content(node, config, options, seed_state, &mut out);
-    } else if tag == "defs" {
+    if tag == "defs" {
         // Serialize defs children, then inject blueprinter filters
         for child in children {
             out.push_str(&serialize_node(child, config, options, seed_state));
@@ -331,6 +338,26 @@ fn qualified_attr_name(node: Node<'_, '_>, attr: &roxmltree::Attribute<'_, '_>) 
     attr.name().to_string()
 }
 
+/// When `flatten_text_to_paths` runs (any input SVG containing `<text>`),
+/// `usvg::Tree::to_string` canonicalizes every rect/circle/ellipse/polygon
+/// into a `<path>`. The downstream fill/style theme helpers use
+/// `is_closed_shape(tag)` to decide whether to rewrite fills (e.g. blueprint
+/// turning a Mermaid rect fill into `"none"`), and `"path"` is not in that
+/// set — so a Mermaid rect that round-tripped through usvg would lose its
+/// fill rewrite. We detect a closed path via its `d` close command and map
+/// the tag to `"rect"` for the fill/style call only. Stroke decisions stay
+/// on the original tag.
+fn effective_tag_for_fill<'a>(tag: &'a str, d: Option<&str>) -> &'a str {
+    if tag == "path" {
+        if let Some(d) = d {
+            if path_is_closed(d) {
+                return "rect";
+            }
+        }
+    }
+    tag
+}
+
 fn is_geometry_attr(tag: &str, name: &str) -> bool {
     matches!(
         (tag, name),
@@ -355,28 +382,15 @@ fn is_geometry_attr(tag: &str, name: &str) -> bool {
     )
 }
 
-fn should_jitter_text(node: &Node<'_, '_>) -> bool {
-    if is_inside_non_visual_container(node) || !is_svg_element(node) {
-        return false;
-    }
-
-    matches!(node.tag_name().name(), "text" | "tspan")
-}
-
 fn has_defs_child(node: &Node<'_, '_>) -> bool {
     node.children()
         .any(|child| child.is_element() && child.tag_name().name() == "defs")
 }
 
 fn blueprinter_defs_content(seed: u64, theme: Theme) -> String {
-    let text_grunge = r#"<filter id="text-grunge" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise" seed="{seed}"/><feDisplacementMap in="SourceGraphic" in2="noise" scale="0.8" xChannelSelector="R" yChannelSelector="G"/></filter>"#
-        .replace("{seed}", &seed.to_string());
-
-    let mut out = text_grunge;
-    if let Some(extra) = theme_style(theme).extra_defs(seed) {
-        out.push_str(&extra);
-    }
-    out
+    // text-grunge filter は廃止（#4: usvg で glyph path に展開し path jitter を当てる）。
+    // テーマ固有の defs（chalk-dust など）だけ残す。
+    theme_style(theme).extra_defs(seed).unwrap_or_default()
 }
 
 fn insert_svg_defs(out: &mut String, seed: u64, theme: Theme) {
@@ -479,148 +493,6 @@ fn parse_viewbox(value: &str) -> Option<(f64, f64, f64, f64)> {
     }
 }
 
-fn serialize_text_content(
-    node: Node<'_, '_>,
-    config: &JitterConfig,
-    _options: &TransformOptions,
-    seed_state: &mut Option<u64>,
-    out: &mut String,
-) {
-    let text_content = node.text().unwrap_or_default();
-    if text_content.trim().is_empty() {
-        return;
-    }
-
-    let mut rng = next_rng(seed_state);
-    let rotation_amplitude = (config.amplitude * 0.3).clamp(0.0, 1.5);
-    let opacity_amplitude = (config.stroke_width_var * 0.2).clamp(0.0, 0.08);
-    let position_amplitude = config.amplitude * 0.2;
-
-    let base_x = node.attribute("x").and_then(|s| s.parse::<f64>().ok());
-    let base_y = node.attribute("y").and_then(|s| s.parse::<f64>().ok());
-
-    for (i, ch) in text_content.chars().enumerate() {
-        let char_x = base_x.map(|x| x + i as f64 * 6.0);
-        let char_y = base_y;
-
-        out.push_str("<tspan");
-
-        if let Some(x) = char_x {
-            let jx = uniform_noise(&mut rng, position_amplitude);
-            out.push_str(&format!(r#" x="{:.3}""#, x + jx));
-        }
-
-        if let Some(y) = char_y {
-            let jy = uniform_noise(&mut rng, position_amplitude);
-            out.push_str(&format!(r#" y="{:.3}""#, y + jy));
-        }
-
-        let opacity = jittered_opacity(1.0, &mut rng, opacity_amplitude);
-        if (opacity - 1.0).abs() > 0.001 {
-            out.push_str(&format!(r#" opacity="{:.3}""#, opacity));
-        }
-
-        if let (Some(x), Some(y)) = (char_x, char_y) {
-            let angle = uniform_noise(&mut rng, rotation_amplitude);
-            if angle.abs() > 0.01 {
-                out.push_str(&format!(
-                    r#" transform="rotate({:.2} {:.3} {:.3})""#,
-                    angle, x, y
-                ));
-            }
-        }
-
-        out.push_str(r#" filter="url(#text-grunge)""#);
-
-        out.push('>');
-        out.push_str(&escape_text(&ch.to_string()));
-        out.push_str("</tspan>");
-    }
-}
-
-fn serialize_text_attrs(
-    node: Node<'_, '_>,
-    config: &JitterConfig,
-    options: &TransformOptions,
-    seed_state: &mut Option<u64>,
-    out: &mut String,
-) {
-    let mut rng = next_rng(seed_state);
-    let rotation_amplitude = (config.amplitude * 0.3).clamp(0.0, 1.5);
-    let opacity_amplitude = (config.stroke_width_var * 0.2).clamp(0.0, 0.08);
-    let mut saw_font_family = false;
-    let mut saw_transform = false;
-    let mut saw_opacity = false;
-    let mut anchor_x = None;
-    let mut anchor_y = None;
-
-    for attr in node.attributes() {
-        let qualified_name = qualified_attr_name(node, &attr);
-        match attr.name() {
-            "x" | "y" => {
-                if let Ok(value) = attr.value().parse::<f64>() {
-                    if attr.name() == "x" {
-                        anchor_x = Some(value);
-                    } else {
-                        anchor_y = Some(value);
-                    }
-                    out.push_str(&format_attr(&qualified_name, attr.value()));
-                } else {
-                    out.push_str(&format_attr(&qualified_name, attr.value()));
-                }
-            }
-            "font-family" => {
-                saw_font_family = true;
-                let value = options
-                    .font_family_override
-                    .as_deref()
-                    .unwrap_or(attr.value());
-                out.push_str(&format_attr(&qualified_name, value));
-            }
-            "transform" => {
-                saw_transform = true;
-                let value = append_text_rotation(
-                    attr.value(),
-                    &mut rng,
-                    rotation_amplitude,
-                    anchor_x,
-                    anchor_y,
-                );
-                out.push_str(&format_attr(&qualified_name, &value));
-            }
-            "opacity" => {
-                saw_opacity = true;
-                if let Ok(value) = attr.value().parse::<f64>() {
-                    let jittered = jittered_opacity(value, &mut rng, opacity_amplitude);
-                    out.push_str(&format_attr(&qualified_name, &format!("{jittered:.3}")));
-                } else {
-                    out.push_str(&format_attr(&qualified_name, attr.value()));
-                }
-            }
-            _ => out.push_str(&format_attr(&qualified_name, attr.value())),
-        }
-    }
-
-    if !saw_font_family {
-        if let Some(font_family) = &options.font_family_override {
-            out.push_str(&format_attr("font-family", font_family));
-        }
-    }
-
-    if !saw_transform {
-        if let Some(value) = text_rotation(&mut rng, rotation_amplitude, anchor_x, anchor_y) {
-            out.push_str(&format_attr("transform", &value));
-        }
-    }
-
-    if !saw_opacity {
-        let jittered = jittered_opacity(1.0, &mut rng, opacity_amplitude);
-        if jittered < 0.999 {
-            out.push_str(&format_attr("opacity", &format!("{jittered:.3}")));
-        }
-    }
-}
-
 fn next_rng(seed_state: &mut Option<u64>) -> StdRng {
     let seed = *seed_state;
     if let Some(seed) = seed {
@@ -629,45 +501,6 @@ fn next_rng(seed_state: &mut Option<u64>) -> StdRng {
     } else {
         StdRng::from_entropy()
     }
-}
-
-fn uniform_noise<R: Rng + ?Sized>(rng: &mut R, amplitude: f64) -> f64 {
-    if amplitude == 0.0 {
-        return 0.0;
-    }
-    (rng.gen::<f64>() - 0.5) * 2.0 * amplitude
-}
-
-fn append_text_rotation<R: Rng + ?Sized>(
-    existing: &str,
-    rng: &mut R,
-    amplitude: f64,
-    x: Option<f64>,
-    y: Option<f64>,
-) -> String {
-    match text_rotation(rng, amplitude, x, y) {
-        Some(rotation) if !existing.trim().is_empty() => {
-            format!("{} {}", existing.trim(), rotation)
-        }
-        Some(rotation) => rotation,
-        None => existing.to_string(),
-    }
-}
-
-fn text_rotation<R: Rng + ?Sized>(
-    rng: &mut R,
-    amplitude: f64,
-    x: Option<f64>,
-    y: Option<f64>,
-) -> Option<String> {
-    let x = x?;
-    let y = y?;
-    let angle = uniform_noise(rng, amplitude);
-    Some(format!("rotate({angle:.3} {x:.3} {y:.3})"))
-}
-
-fn jittered_opacity<R: Rng + ?Sized>(base: f64, rng: &mut R, amplitude: f64) -> f64 {
-    (base + uniform_noise(rng, amplitude)).clamp(0.2, 1.0)
 }
 
 fn format_attr(name: &str, value: &str) -> String {
@@ -689,42 +522,10 @@ fn escape_attr(value: &str) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_text_with_jitter() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
-          <text x="10" y="20" font-family="Arial">Hi</text>
-        </svg>"#;
-
-        let config = JitterConfig::default();
-        let options = TransformOptions {
-            seed: Some(42),
-            font_family_override: None,
-            theme: Theme::None,
-        };
-
-        let result = transform_svg(svg, &config, &options).unwrap();
-        assert!(result.contains("<tspan"));
-        assert!(result.contains("</tspan>"));
-        assert!(result.contains("H"));
-        assert!(result.contains("i"));
-    }
-
-    #[test]
-    fn test_text_with_font_family_override() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
-          <text x="10" y="20" font-family="Arial">Test</text>
-        </svg>"#;
-
-        let config = JitterConfig::default();
-        let options = TransformOptions {
-            seed: Some(42),
-            font_family_override: Some("Georgia".to_string()),
-            ..Default::default()
-        };
-
-        let result = transform_svg(svg, &config, &options).unwrap();
-        assert!(result.contains(r#"font-family="Georgia""#));
-    }
+    // Text-related tests removed in #4: <text> is now expanded to glyph paths
+    // upstream via flatten_text_to_paths, so transform_svg never sees text
+    // elements. Glyph rendering and font resolution are usvg's responsibility,
+    // and there's no longer a tspan/font-family-override layer to test here.
 
     #[test]
     fn test_blueprint_theme_stroke_color() {
@@ -740,7 +541,7 @@ mod tests {
             theme: Theme::Blueprint,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         assert!(result.contains(r##"stroke="#e8e8e8""##));
         assert!(!result.contains(r##"stroke="black""##));
     }
@@ -760,7 +561,7 @@ mod tests {
             theme: Theme::Blueprint,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         // circle and ellipse are converted to paths with jitter, fill should be "none" in blueprint theme
         assert!(result.contains(r##"fill="none""##));
     }
@@ -778,7 +579,7 @@ mod tests {
             theme: Theme::Blueprint,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         // line elements should not have fill changed to "none" (they don't match the closed shapes)
         assert!(result.contains(r##"fill="red""##));
     }
@@ -796,7 +597,7 @@ mod tests {
             theme: Theme::None,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         assert!(result.contains(r##"fill="red""##));
         assert!(result.contains(r##"stroke="blue""##));
     }
@@ -815,7 +616,7 @@ mod tests {
             theme: Theme::Blueprint,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         // circle is converted to path with jitter, so output will have fill and stroke set directly in path element
         assert!(result.contains(r##"stroke="##));
         assert!(result.contains(r##"fill="##));
@@ -834,7 +635,7 @@ mod tests {
             theme: Theme::Blueprint,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         // circle should have default stroke added in blueprint theme
         assert!(result.contains(r##"stroke="#e8e8e8""##));
     }
@@ -852,7 +653,7 @@ mod tests {
             theme: Theme::Sumi,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         // sumi theme should use grayscale color
         assert!(result.contains("rgba(50, 50, 50, 0.8)"));
     }
@@ -870,7 +671,7 @@ mod tests {
             theme: Theme::Watercolor,
         };
 
-        let result = transform_svg(svg, &config, &options).unwrap();
+        let result = transform_svg(svg, &config, &options, None).unwrap();
         // watercolor theme should use a pastel color from the palette
         let palette_colors = [
             "#FFB3BA", "#FFDFBA", "#FFFFBA", "#BAFFC9", "#BAE1FF", "#E0BBE4", "#FFC7F5",
@@ -879,6 +680,72 @@ mod tests {
         assert!(
             has_palette_color,
             "Result should contain at least one watercolor palette color"
+        );
+    }
+
+    #[test]
+    fn transform_svg_treats_closed_path_as_fill_target_for_blueprint() {
+        // Mermaid 風: <text> を含むため flatten_text_to_paths が usvg canonicalize
+        // を走らせ、rect は <path d="... Z"> に化ける。それでも blueprint の
+        // closed-shape fill 処理 (fill="none") が効くことを保証する。
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+          <rect x="10" y="10" width="80" height="40" fill="red" stroke="black"/>
+          <text x="20" y="35" font-size="12">node</text>
+        </svg>"#;
+
+        let config = JitterConfig {
+            amplitude: 0.0,
+            ..JitterConfig::default()
+        };
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options, None).unwrap();
+        // closed path として認識され、blueprint の fill="none" が掛かっていること
+        assert!(
+            result.contains(r##"fill="none""##),
+            "closed path from usvg canonicalize must be treated as fill target for blueprint; got: {result}"
+        );
+        assert!(
+            !result.contains(r##"fill="red""##),
+            "original red fill must be rewritten by blueprint theme; got: {result}"
+        );
+    }
+
+    #[test]
+    fn transform_svg_keeps_open_path_fill_for_blueprint() {
+        // 開いた path（Z なし）には fill="none" を強制しない。
+        // 元の fill 属性が保持されることを確認する。
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100">
+          <path d="M 10 10 L 90 10 L 90 50" fill="red" stroke="black"/>
+          <text x="20" y="80" font-size="12">node</text>
+        </svg>"#;
+
+        let config = JitterConfig {
+            amplitude: 0.0,
+            ..JitterConfig::default()
+        };
+        let options = TransformOptions {
+            seed: Some(42),
+            font_family_override: None,
+            theme: Theme::Blueprint,
+        };
+
+        let result = transform_svg(svg, &config, &options, None).unwrap();
+        // open path は fill="none" 化されない。usvg は色名を hex (#ff0000) に
+        // 正規化することがあるため、両方を許容して closed-shape 用の "none"
+        // 強制が掛かっていない（元の赤系 fill が残っている）ことを確認する。
+        // glyph path などの fill="none" は SVG 内に別途現れるため、特定の
+        // open path 要素に対する fill チェックでなく、赤系 fill の残存を見る。
+        let kept_red = result.contains(r##"fill="red""##)
+            || result.contains(r##"fill="#ff0000""##)
+            || result.contains(r##"fill="#FF0000""##);
+        assert!(
+            kept_red,
+            "open path fill must not be force-rewritten to none by blueprint; got: {result}"
         );
     }
 
@@ -898,7 +765,7 @@ mod tests {
             font_family_override: None,
             theme: Theme::Sumi,
         };
-        let sumi_result = transform_svg(svg, &config, &sumi_options).unwrap();
+        let sumi_result = transform_svg(svg, &config, &sumi_options, None).unwrap();
         assert!(!sumi_result.contains("sumi-ink-bleed"));
         assert!(!sumi_result.contains("filter=\"url(#"));
 
@@ -907,7 +774,7 @@ mod tests {
             font_family_override: None,
             theme: Theme::Watercolor,
         };
-        let watercolor_result = transform_svg(svg, &config, &watercolor_options).unwrap();
+        let watercolor_result = transform_svg(svg, &config, &watercolor_options, None).unwrap();
         assert!(!watercolor_result.contains("watercolor-bleed"));
         assert!(!watercolor_result.contains("filter=\"url(#"));
     }
@@ -926,7 +793,7 @@ fn test_chalk_theme_uses_palette_color_for_stroke() {
         theme: Theme::Chalk,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     let palette_colors = ["#f5f5f5", "#fff5b8", "#ffd0d0", "#cfe7ff", "#d8ffd0"];
     let has_palette = palette_colors.iter().any(|c| result.contains(c));
     assert!(has_palette, "chalk theme should pick from palette");
@@ -946,7 +813,7 @@ fn test_chalk_theme_emits_blackboard_background() {
         theme: Theme::Chalk,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     assert!(
         result.contains(r##"fill="#1f2a25""##),
         "chalk theme should emit chalkboard background"
@@ -966,7 +833,7 @@ fn test_chalk_theme_default_stroke_added() {
         theme: Theme::Chalk,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     assert!(
         result.contains("stroke="),
         "chalk theme should add a default stroke when missing"
@@ -986,7 +853,7 @@ fn test_chalk_theme_filter_id() {
         theme: Theme::Chalk,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     assert!(result.contains(r##"filter="url(#chalk-dust)""##));
     assert!(result.contains(r#"id="chalk-dust""#));
 }
@@ -1004,7 +871,7 @@ fn test_chalk_theme_closed_shape_fill_none() {
         theme: Theme::Chalk,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     assert!(result.contains(r#"fill="none""#));
 }
 
@@ -1025,7 +892,7 @@ fn test_theme_filter_ids_are_applied() {
         font_family_override: None,
         theme: Theme::Chalk,
     };
-    let chalk_result = transform_svg(svg, &config, &chalk_options).unwrap();
+    let chalk_result = transform_svg(svg, &config, &chalk_options, None).unwrap();
     assert!(chalk_result.contains(r##"filter="url(#chalk-dust)""##));
 
     let marker_options = TransformOptions {
@@ -1033,7 +900,7 @@ fn test_theme_filter_ids_are_applied() {
         font_family_override: None,
         theme: Theme::Marker,
     };
-    let marker_result = transform_svg(svg, &config, &marker_options).unwrap();
+    let marker_result = transform_svg(svg, &config, &marker_options, None).unwrap();
     assert!(marker_result.contains(r##"filter="url(#marker-glow)""##));
 }
 
@@ -1050,7 +917,7 @@ fn test_watercolor_opacity_randomization() {
         theme: Theme::Watercolor,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     // Check that stroke-opacity is set for watercolor theme
     assert!(
         result.contains(r##"stroke-opacity=""##),
@@ -1071,7 +938,7 @@ fn test_sumi_opacity_randomization() {
         theme: Theme::Sumi,
     };
 
-    let result = transform_svg(svg, &config, &options).unwrap();
+    let result = transform_svg(svg, &config, &options, None).unwrap();
     // Check that stroke-opacity is set for sumi theme
     assert!(
         result.contains(r##"stroke-opacity=""##),
@@ -1094,7 +961,7 @@ fn test_watercolor_color_randomization_varies_with_seed() {
         theme: Theme::Watercolor,
     };
 
-    let result1 = transform_svg(svg, &config, &options).unwrap();
+    let result1 = transform_svg(svg, &config, &options, None).unwrap();
     let result2 = transform_svg(
         svg,
         &config,
@@ -1103,6 +970,7 @@ fn test_watercolor_color_randomization_varies_with_seed() {
             font_family_override: None,
             theme: Theme::Watercolor,
         },
+        None,
     )
     .unwrap();
 
