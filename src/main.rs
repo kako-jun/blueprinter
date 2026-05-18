@@ -33,7 +33,12 @@ struct StyleArgs {
     #[arg(long)]
     seed: Option<u64>,
 
-    /// Override SVG text font-family while preserving layout
+    /// Override SVG text font-family while preserving layout.
+    ///
+    /// Note: with #4 glyph-path flattening, this flag is currently a no-op at
+    /// the SVG attribute level — text is resolved by usvg's fontdb (see
+    /// `--font-dir` / system fonts) before styling runs. Retained for API
+    /// stability and may be re-enabled by a future text styling pass.
     #[arg(long)]
     font_family: Option<String>,
 

@@ -185,6 +185,8 @@ The first public crate/release target is `v0.1.0`.
 
 Text in the input SVG is flattened to glyph outline paths via `usvg` (#4) before any styling runs, so fonts are resolved up-front. blueprinter loads the host's system fonts so any `font-family` referenced in the input SVG (e.g. `Arial`, `Helvetica`) resolves. If the requested face is not installed, `usvg` falls back to whatever the fontdb can match.
 
+Note: with #4 glyph-path flattening, the `--font-family` CLI flag no longer applies at the SVG attribute level. Text rendering uses the fonts loaded into the rasterizer's font database (via `--font-dir`, or the system font database). `--font-family` is retained for API stability and may be re-enabled by a future text styling pass.
+
 For cross-platform reproducibility, pass `--font-dir <path>` to load every `.ttf` / `.otf` in a directory into the fontdb. This is the recommended way to pin specific fonts:
 
 ```bash
