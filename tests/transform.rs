@@ -1,6 +1,7 @@
 use std::fs;
 
 use blueprinter::jitter::JitterConfig;
+use blueprinter::svg::transform::TransformError;
 use blueprinter::svg::{theme_style, transform_svg, Theme, TransformOptions};
 
 fn options(seed: u64) -> TransformOptions {
@@ -467,4 +468,165 @@ fn test_chalk_marker_have_filter_id_but_no_bleed_pass() {
     let marker = theme_style(Theme::Marker);
     assert_eq!(marker.filter_id(), Some("marker-glow"));
     assert!(marker.bleed_pass_params().is_none());
+}
+
+// ---------------------------------------------------------------------------
+// #4 text→glyph path flatten 周りの異常系・境界値・テーマ横断テスト群
+// ---------------------------------------------------------------------------
+
+/// 観点: 異常系・エラー種別分離。
+/// `<text>` を含む不正な SVG は flatten_text_to_paths の usvg パースで落ち、
+/// transform_svg は TextFlattenError として包んで返す（XmlParseError と分離）。
+#[test]
+fn test_transform_svg_returns_text_flatten_error_for_broken_svg_with_text() {
+    let result = transform_svg(
+        "<text>broken without root",
+        &JitterConfig::default(),
+        &options(42),
+        None,
+    );
+    match result {
+        Err(TransformError::TextFlattenError(_)) => {}
+        other => panic!("expected TextFlattenError, got {other:?}"),
+    }
+}
+
+/// 観点: 異常系・責務分離。
+/// `<text>` を含まない不正な SVG は flatten_text_to_paths を素通しし、
+/// 後段の roxmltree::Document::parse が拾って XmlParseError を返す。
+#[test]
+fn test_transform_svg_returns_xml_parse_error_for_broken_svg_without_text() {
+    let result = transform_svg("<rect>broken", &JitterConfig::default(), &options(42), None);
+    match result {
+        Err(TransformError::XmlParseError(_)) => {}
+        other => panic!("expected XmlParseError, got {other:?}"),
+    }
+}
+
+/// 観点: docs follow-through。
+/// `font_family_override` は #4 glyph-path flatten 以降は transform 層では
+/// 使われない（フォント差し替えは `--font-dir` 経由）。指定しても出力に
+/// 反映されないことを担保する。
+#[test]
+fn test_transform_svg_font_family_override_is_noop_after_flatten() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">
+        <text x="20" y="50" font-size="24">Hi</text>
+    </svg>"##;
+    let opts = TransformOptions {
+        seed: Some(42),
+        font_family_override: Some("Virgil".to_string()),
+        theme: Theme::None,
+    };
+    let out = transform_svg(svg, &JitterConfig::default(), &opts, None).unwrap();
+    assert!(
+        !out.contains("Virgil"),
+        "font_family_override is a no-op after #4 flatten, but output mentions Virgil: {out}"
+    );
+}
+
+/// 観点: テーマ横断（既存 blueprint 版の chalk 版）。
+/// text を含むことで rect が usvg で path に正規化されても、chalk テーマの
+/// closed-shape fill ルールが effective_tag_for_fill 経由で効き、fill="none" が出る。
+#[test]
+fn test_transform_svg_closed_path_fill_rewrite_works_for_chalk_theme() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">
+        <rect x="10" y="10" width="50" height="40" fill="red" stroke="black"/>
+        <text x="60" y="50" font-size="14">Hi</text>
+    </svg>"##;
+    let opts = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Chalk,
+    };
+    let out = transform_svg(svg, &JitterConfig::default(), &opts, None).unwrap();
+    assert!(
+        out.contains(r#"fill="none""#),
+        "chalk closed-shape fill rewrite did not apply: {out}"
+    );
+}
+
+/// 観点: 誤検出経路の安全性。
+/// XML コメント内の `<text>` は contains_text_element が拾う可能性があるが、
+/// その場合でも usvg パースで panic せず Ok を返すことを担保する。
+#[test]
+fn test_transform_svg_handles_comment_with_text_tag_without_panic() {
+    let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><!--<text>x</text>--></svg>";
+    let result = transform_svg(svg, &JitterConfig::default(), &options(42), None);
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+/// 観点: path 以外の素通り（effective_tag_for_fill 統合経由）。
+/// text を含むことで usvg が走るが、`<line>` は usvg を通っても `<line>` のまま
+/// （path-with-close ではない）か、line→path 変換でも path_is_closed=false に
+/// なる。いずれにせよ blueprint テーマで fill="none" 強制は起きず、元の fill
+/// 指定（"red"）が温存されること（あるいは line が消えていないこと）を確認する。
+#[test]
+fn test_effective_tag_for_fill_via_line_with_close_command_in_d() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <line x1="0" y1="0" x2="50" y2="50" stroke="black" fill="red"/>
+        <text x="20" y="80" font-size="14">x</text>
+    </svg>"##;
+    let opts = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Blueprint,
+    };
+    let out = transform_svg(svg, &JitterConfig::default(), &opts, None).unwrap();
+    // line は open path にしかならないので、fill="red" が "none" に書き換えられない
+    // ことを担保する（line→path 変換後も path_is_closed=false で素通り）。
+    // usvg を経由すると "red" → "#ff0000" に hex 展開される可能性があるので、
+    // どちらの形でも line の fill 指定が温存されていることを担保する。
+    let preserved_red = out.contains(r##"fill="red""##) || out.contains(r##"fill="#ff0000""##);
+    assert!(
+        preserved_red,
+        "line's fill should not be forced to none in blueprint theme: {out}"
+    );
+}
+
+/// 観点: null / 境界値。
+/// `<path>` の `d` 属性が空・欠落でも panic しない（jitter pipeline が
+/// degenerate path として処理し、blueprint テーマ適用も破綻しない）。
+#[test]
+fn test_transform_svg_path_with_empty_d_does_not_panic() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <text x="10" y="20" font-size="14">x</text>
+        <path d="" stroke="red"/>
+    </svg>"##;
+    let opts = TransformOptions {
+        seed: Some(42),
+        font_family_override: None,
+        theme: Theme::Blueprint,
+    };
+    let result = transform_svg(svg, &JitterConfig::default(), &opts, None);
+    assert!(result.is_ok(), "expected Ok, got {result:?}");
+}
+
+/// 観点: Display 実装の固定。
+/// TransformError::TextFlattenError は Display 経由で内包文字列を漏らす
+/// （ログに inner エラー情報が乗ること）。フォーマット細則は実装に従う。
+#[test]
+fn test_transform_svg_text_flatten_error_display_format() {
+    let err = TransformError::TextFlattenError("oops".to_string());
+    let formatted = format!("{err}");
+    assert!(
+        formatted.contains("oops"),
+        "Display should include inner message, got {formatted}"
+    );
+}
+
+/// 観点: text 以外の text-like 要素 smoke。
+/// `<textPath>` は contains_text_element に拾われる可能性があるが、
+/// transform_svg として panic せず Ok を返すこと（usvg が解釈・正規化できる
+/// か、できなくても TextFlattenError として表面化するだけで panic しない）。
+#[test]
+fn test_transform_svg_handles_textpath_without_panic() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="80">
+        <defs><path id="p" d="M 10 40 L 190 40"/></defs>
+        <text><textPath xlink:href="#p">foo</textPath></text>
+    </svg>"##;
+    let result = transform_svg(svg, &JitterConfig::default(), &options(42), None);
+    // panic しなければ Ok でも Err でもよい。実機では Ok を期待するが、usvg の
+    // textPath 対応に依存するため、いずれにせよ catch_unwind なしで返ること
+    // だけを担保する。
+    let _ = result;
 }

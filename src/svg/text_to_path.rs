@@ -134,6 +134,48 @@ mod tests {
         assert!(!contains_text_element("<svg></svg>"));
     }
 
+    /// 観点: 境界値・空文字。
+    /// 空の text 要素や空白だけの text 要素を含む SVG でも panic せず Ok を返す。
+    #[test]
+    fn flatten_text_to_paths_does_not_panic_on_empty_or_whitespace_text() {
+        let svgs = [
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><text x="10" y="20"></text></svg>"##,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><text x="10" y="20">   </text></svg>"##,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><text/></svg>"##,
+        ];
+        for svg in svgs {
+            let result = flatten_text_to_paths(svg, None);
+            assert!(
+                result.is_ok(),
+                "empty/whitespace text panicked or errored for {svg}: {result:?}"
+            );
+        }
+    }
+
+    /// 観点: API 失敗 / ファイル系。
+    /// 存在しない font_dir を渡しても panic せず、Ok か Err のどちらかに収まる。
+    #[test]
+    fn flatten_text_to_paths_does_not_panic_with_nonexistent_font_dir() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><text x="10" y="20" font-size="14">Hi</text></svg>"##;
+        let result =
+            flatten_text_to_paths(svg, Some(Path::new("/nonexistent-path-xyz-blueprinter")));
+        // どちらでもよいが panic しないこと。
+        let _ = result;
+    }
+
+    /// 観点: 境界値・事故パターン。
+    /// `<text` 5 バイトちょうど、`<tex` などの切り詰め入力で out-of-bounds せず false を返す。
+    #[test]
+    fn contains_text_element_handles_truncated_input_at_text_tag_boundary() {
+        // 末尾で続き文字 (空白・>・/ 等) が無いので false。
+        assert!(!contains_text_element("<text"));
+        // tag 名にも届かない切り詰め。
+        assert!(!contains_text_element("<tex"));
+        assert!(!contains_text_element("<t"));
+        assert!(!contains_text_element("<"));
+        assert!(!contains_text_element(""));
+    }
+
     #[test]
     fn flatten_text_to_paths_preserves_non_text_elements_alongside_text() {
         // text と一緒に居る shape は usvg で正規化される（rect/circle が path に
