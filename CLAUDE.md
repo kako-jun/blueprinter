@@ -37,7 +37,7 @@ src/
 ## 主要な設計判断
 
 - **レイアウト計算はしない** — 入力 SVG の座標をそのまま使い、見た目（stroke, fill, filter）のみを変換する
-- **ラスター主軸** — ユーザー向けの最終出力は PNG / WebP。内部的には styled SVG を中間表現として作り resvg でラスタライズする。中間 SVG は `--format svg` または `.svg` 出力パスでダンプ可能だが debug-only 扱いで、aquarelle (#25) や text path 化 (#4) のような SVG では表現しきれない加工を今後追加していく前提
+- **ラスター主軸** — ユーザー向けの最終出力は PNG / WebP。内部的には styled SVG を中間表現として作り resvg でラスタライズする。中間 SVG は `--format svg` または `.svg` 出力パスでダンプ可能だが debug-only 扱い。sumi / watercolor は aquarelle (#25, 実装済み) のラスター bleed pass を resvg 出力に適用し、text path 化 (#4) など SVG では表現しきれない加工も今後追加していく前提
 - **毎回違う出力** — 手書き風のランダム性を持たせる。`--seed` で再現可能（transform 実装済み）
 - **エディタは作らない** — CLI で変換するだけ。入力は既存のエディタ・ツールで作成する
 - **mmdc 連携** — Mermaid 入力対応時は mermaid-cli（mmdc）を外部コマンドとして呼び出す予定

@@ -1,6 +1,6 @@
 # blueprinter Overview
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 ## What is blueprinter?
 
@@ -52,10 +52,11 @@ The user-facing pipeline is **structured-input → styled raster (PNG / WebP)**.
 Internally we still build a styled SVG as the intermediate representation, then
 rasterize it with `resvg`; that intermediate can be dumped to disk for inspection
 via `--format svg` (or by writing to a `.svg` path), but it is no longer the
-default output. Treating raster as the primary product lets future stages add
-effects that have no faithful SVG equivalent — watercolor bleed (#25), text
-converted to path (#4), and similar — without breaking a "SVG round-trip"
-contract that blueprinter was never trying to keep.
+default output. Treating raster as the primary product lets stages add
+effects that have no faithful SVG equivalent — watercolor / sumi bleed
+(#25, implemented via the aquarelle raster compositor), text converted to path
+(#4), and similar — without breaking a "SVG round-trip" contract that
+blueprinter was never trying to keep.
 
 The intermediate SVG serializer preserves non-jittered element structure,
 attributes, namespaces, and text, but it does not preserve XML declarations,
@@ -124,8 +125,8 @@ replaced by image references.
 | Theme | Status | Description |
 |---|---|---|
 | `blueprint` | Implemented | Technical-drawing aesthetic: dark blue background with light line strokes. |
-| `sumi` | Implemented | Japanese ink wash painting with grayscale strokes and Gaussian bleed. |
-| `watercolor` | Implemented | Soft pastel palette, color-mixing bleed, and stroke replicas for diffuse pigment. |
+| `sumi` | Implemented | Japanese ink wash painting with grayscale strokes and a raster bleed pass via the aquarelle compositor. |
+| `watercolor` | Implemented | Soft pastel palette with diffuse raster bleed compositing (via the aquarelle compositor) and stroke replicas for pigment spread. |
 | `chalk` | Implemented | White (and pale color) chalk on a slate-green chalkboard, with a turbulence-driven dust filter that breaks each stroke up. |
 | `marker` | Implemented | Six-color neon highlighter palette on a dark navy sketchbook, with a Gaussian-blur halo behind each shape and translucent palette fills. |
 | `manga` | Implemented | Pure black ink on white paper, with three SVG `<pattern>` screentones (sparse dots / dense dots / diagonal lines) sampled per closed shape. Speed lines are out of scope (would require layout). |

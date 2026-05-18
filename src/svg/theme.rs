@@ -1,3 +1,4 @@
+use aquarelle::AquarelleBleedParams;
 use rand::RngCore;
 
 use crate::svg::transform::Theme;
@@ -46,14 +47,25 @@ pub trait ThemeStyle: Sync {
         None
     }
 
-    fn filter_id(&self) -> &'static str {
-        "subtle-bleed"
+    /// Per-shape SVG filter id applied via `filter="url(#...)"`. Themes that
+    /// emit ink/dust glyph effects (chalk, marker) override this; themes that
+    /// do bleed via aquarelle raster pass return `None` from
+    /// [`Self::bleed_pass_params`] and skip the shape-level filter attribute.
+    fn filter_id(&self) -> Option<&'static str> {
+        None
     }
 
     /// SVG fragments to inject into the document's `<defs>` (filters,
     /// patterns, gradients, etc.). `None` = nothing extra.
     fn extra_defs(&self, seed: u64) -> Option<String> {
         let _ = seed;
+        None
+    }
+
+    /// Aquarelle raster bleed pass parameters. `Some` = run
+    /// `render_aquarelle_bleed_pass` on the rasterized output; the SVG-level
+    /// shape filter attribute is suppressed to avoid double-bleed.
+    fn bleed_pass_params(&self) -> Option<AquarelleBleedParams> {
         None
     }
 

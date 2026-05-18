@@ -1,4 +1,5 @@
 /// Watercolor theme implementation — color bleed and mixing effect.
+use aquarelle::AquarelleBleedParams;
 use rand::{Rng, RngCore};
 
 use crate::svg::theme::{rewrite_style, ThemeStyle};
@@ -28,11 +29,12 @@ impl ThemeStyle for WatercolorStyle {
     fn stroke_opacity(&self, rng: &mut dyn RngCore) -> Option<f64> {
         Some(watercolor_random_opacity(rng))
     }
-    fn filter_id(&self) -> &'static str {
-        "watercolor-bleed"
-    }
-    fn extra_defs(&self, seed: u64) -> Option<String> {
-        Some(watercolor_filter_defs(seed))
+    fn bleed_pass_params(&self) -> Option<AquarelleBleedParams> {
+        Some(AquarelleBleedParams {
+            radius: 6.0,
+            intensity: 0.5,
+            halo: 0.4,
+        })
     }
     fn extra_replicas(&self, tag: &str) -> usize {
         if matches!(
@@ -85,12 +87,6 @@ pub fn watercolor_random_opacity<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     (base + variance).min(1.0)
 }
 
-/// Creates SVG filter definitions for watercolor theme.
-pub fn watercolor_filter_defs(_seed: u64) -> String {
-    r#"<filter id="watercolor-bleed" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="6.0" result="blurred"/><feColorMatrix in="blurred" type="saturate" values="0.9" result="saturated"/><feOffset in="saturated" dx="0.2" dy="0.2" result="offset"/><feComponentTransfer in="offset" result="faded"><feFuncA type="linear" slope="0.3"/></feComponentTransfer><feComposite in="faded" in2="SourceGraphic" operator="lighten"/></filter>"#
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,14 +124,6 @@ mod tests {
             assert!(opacity >= 0.5);
             assert!(opacity <= 1.0);
         }
-    }
-
-    #[test]
-    fn test_watercolor_filter_defs_contains_required_elements() {
-        let defs = watercolor_filter_defs(42);
-        assert!(defs.contains("watercolor-bleed"));
-        assert!(defs.contains("feGaussianBlur"));
-        assert!(defs.contains("feColorMatrix"));
     }
 
     #[test]

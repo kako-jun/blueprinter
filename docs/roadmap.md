@@ -1,6 +1,6 @@
 # blueprinter ロードマップ
 
-最終更新: 2026-05-18
+最終更新: 2026-05-19
 
 ## 完了済み
 
@@ -80,6 +80,7 @@
 - [x] sumi / watercolor テーマ（にじみエンジン）— #13 完了
 - [x] circle / ellipse / polygon の揺らし変換
 - [x] manga テーマ（黒インク + 白背景 + 3 種スクリーントーン pattern）
+- [x] [#25] sumi / watercolor の bleed を SVG filter から aquarelle ラスター pass に置換（sumi: radius 3.0 / intensity 0.3 / halo 0.0、watercolor: radius 6.0 / intensity 0.5 / halo 0.4）— 完了
 
 ### Phase 7: 公開準備（#15）
 
